@@ -1,0 +1,166 @@
+import { setMaxListeners } from 'node:events';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { request as httpRequest } from 'node:http';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { after, test } from 'node:test';
+import assert from 'node:assert/strict';
+import { serve } from '@hono/node-server';
+import { Identity } from '@semaphore-protocol/identity';
+import { Group } from '@semaphore-protocol/group';
+import { prove } from '@tessera-protocol/sdk';
+import { createIssuerApp } from './app.js';
+
+const tempDirs: string[] = [];
+
+setMaxListeners(20);
+
+after(() => {
+  for (const dir of tempDirs) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('issuer service issues credentials, returns roots, and verifies proofs', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'tessera-issuer-test-'));
+  tempDirs.push(dataDir);
+
+  const { app, state } = createIssuerApp({ dataDir });
+  const server = serve({ fetch: app.fetch, port: 0 });
+  const address = server.address();
+  assert.notEqual(address, null);
+  if (address === null || typeof address === 'string') {
+    throw new Error('Failed to start test server');
+  }
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const identity = new Identity();
+
+  const issueResponse = await requestJson(baseUrl, '/credential/issue', {
+    method: 'POST',
+    body: {
+      commitment: identity.commitment.toString(),
+      anchorType: 'bank-account',
+      anchorHash: 'anchor-hash-123',
+      tier: 1,
+      jurisdiction: 'EU',
+    },
+  });
+
+  assert.equal(issueResponse.status, 201);
+  const issued = issueResponse.json as {
+    credential: Parameters<typeof prove>[2];
+    groupRoot: string;
+  };
+
+  assert.equal(issued.credential.identityCommitment, identity.commitment.toString());
+  assert.equal(issued.groupRoot, state.getCurrentRoot());
+
+  const rootsResponse = await requestJson(baseUrl, '/roots');
+  assert.equal(rootsResponse.status, 200);
+  const rootsPayload = rootsResponse.json as {
+    roots: string[];
+    currentRoot: string;
+    groupSize: number;
+  };
+
+  assert.equal(rootsPayload.groupSize, 1);
+  assert.equal(rootsPayload.currentRoot, issued.groupRoot);
+  assert.ok(rootsPayload.roots.includes(issued.groupRoot));
+
+  const groupState = JSON.parse(
+    readFileSync(join(dataDir, 'group.json'), 'utf8'),
+  ) as { groupExport: string };
+  const group = Group.import(groupState.groupExport);
+  const proof = await prove(
+    identity.export(),
+    group,
+    issued.credential,
+    'demo-platform',
+  );
+
+  try {
+    const verifyResponse = await requestJson(baseUrl, '/proof/verify', {
+      method: 'POST',
+      body: {
+        platformId: 'demo-platform',
+        proof,
+      },
+    });
+
+    assert.equal(verifyResponse.status, 200);
+    const verifyPayload = verifyResponse.json as {
+      valid: boolean;
+      type: 'human' | 'agent';
+      tier: number;
+      scope: null | Record<string, unknown>;
+      error?: string;
+    };
+
+    assert.equal(verifyPayload.valid, true);
+    assert.equal(verifyPayload.type, 'human');
+    assert.equal(verifyPayload.tier, 1);
+    assert.equal(verifyPayload.scope, null);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+  }
+});
+
+function requestJson(
+  baseUrl: string,
+  path: string,
+  options: {
+    method?: string;
+    body?: unknown;
+  } = {},
+): Promise<{ status: number; json: unknown }> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(path, baseUrl);
+    const payload = options.body === undefined ? undefined : JSON.stringify(options.body);
+
+    const req = httpRequest(
+      url,
+      {
+        method: options.method ?? 'GET',
+        headers: payload
+          ? {
+              'content-type': 'application/json',
+              'content-length': Buffer.byteLength(payload),
+              connection: 'close',
+            }
+          : {
+              connection: 'close',
+            },
+      },
+      (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          resolve({
+            status: res.statusCode ?? 0,
+            json: data.length > 0 ? JSON.parse(data) : null,
+          });
+        });
+      },
+    );
+
+    req.on('error', reject);
+
+    if (payload) {
+      req.write(payload);
+    }
+
+    req.end();
+  });
+}
