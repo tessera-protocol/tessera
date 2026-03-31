@@ -2,7 +2,13 @@
 
 Tessera Guard for OpenClaw is a fail-closed permission middleware for agent actions. It intercepts sensitive actions like messaging, payments, shell execution, and content publishing, then blocks them unless a valid Tessera credential explicitly authorises the operation.
 
-[![npm](https://img.shields.io/npm/v/@tessera-protocol/sdk)](https://www.npmjs.com/package/@tessera-protocol/sdk)
+[![npm](https://img.shields.io/npm/v/@tessera-protocol/openclaw)](https://www.npmjs.com/package/@tessera-protocol/openclaw)
+
+## Install
+
+```bash
+npm install @tessera-protocol/openclaw
+```
 
 ## Quick Start
 
@@ -38,6 +44,7 @@ if (!result.allowed) {
 
 - Offline mode is the default. It verifies the embedded Tessera credential and delegation locally using the SDK's cryptographic primitives and a caller-supplied trusted issuer key list.
 - Online mode additionally calls an issuer endpoint at `POST /guard/check` for issuer-backed revocation and policy checks. It requires a running issuer service.
+- In online mode, `issuerUrl` must be configured explicitly by the developer. The guard never reads issuer endpoints from the token.
 
 ```ts
 const guard = createGuard({

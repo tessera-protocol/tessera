@@ -1,4 +1,5 @@
 import type { AgentDelegation, AgentScope, TesseraCredential } from '@tessera-protocol/sdk';
+import { createHash } from 'node:crypto';
 
 export interface SerializedAgentCredentialPayload {
   version: 'tessera.openclaw/v1';
@@ -9,7 +10,6 @@ export interface SerializedAgentCredentialPayload {
     revokedAt?: number;
   };
   metadata?: {
-    issuerUrl?: string;
     agentName?: string;
   };
 }
@@ -51,6 +51,22 @@ export function parseAgentCredential(token: string): ParsedAgentCredential {
   }
 
   return { payload, token };
+}
+
+export function getDelegationId(
+  delegation: Pick<AgentDelegation, 'parentCommitment' | 'agentName' | 'issuedAt' | 'expiresAt'>,
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        parentCommitment: delegation.parentCommitment,
+        agentName: delegation.agentName,
+        issuedAt: delegation.issuedAt,
+        expiresAt: delegation.expiresAt,
+      }),
+      'utf8',
+    )
+    .digest('hex');
 }
 
 export function formatCurrencyAmount(

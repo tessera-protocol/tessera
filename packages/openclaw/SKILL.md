@@ -31,7 +31,7 @@ const guard = createGuard({
   credential: process.env.TESSERA_AGENT_CREDENTIAL!,
   trustedIssuerKeys: [process.env.TESSERA_ISSUER_PUBLIC_KEY!],
   issuerUrl: 'http://localhost:3001',
-  offlineMode: true,
+  offlineMode: false,
 });
 ```
 
@@ -40,7 +40,9 @@ The credential should be a JWT-like token containing:
 - the parent Tessera human credential
 - the delegated agent scope
 - delegation signature metadata
-- optional issuer URL / status metadata
+- optional agent metadata
+
+In online mode, `issuerUrl` must be configured explicitly by the developer. The guard never reads issuer endpoints from the token.
 
 ## Example Usage
 

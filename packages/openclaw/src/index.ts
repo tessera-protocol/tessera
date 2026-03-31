@@ -7,6 +7,7 @@ export {
   getTesseraSkillConfig,
 } from './skill.js';
 export {
+  getDelegationId,
   parseAgentCredential,
   serializeAgentCredential,
   type SerializedAgentCredentialPayload,

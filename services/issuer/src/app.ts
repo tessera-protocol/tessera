@@ -1,6 +1,10 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { createGuard } from '@tessera-protocol/openclaw';
+import {
+  createGuard,
+  getDelegationId,
+  parseAgentCredential,
+} from '@tessera-protocol/openclaw';
 import { createVerifier } from '@tessera-protocol/sdk';
 import type {
   AnchorTier,
@@ -36,6 +40,10 @@ interface GuardCheckRequestBody {
   token?: string;
   action?: string;
   resource?: object;
+}
+
+interface RevokeDelegationRequestBody {
+  delegationId?: string;
 }
 
 export function createIssuerApp(options: CreateIssuerAppOptions) {
@@ -81,7 +89,7 @@ export function createIssuerApp(options: CreateIssuerAppOptions) {
         anchorHash: body.anchorHash!,
         tier: body.tier!,
         jurisdiction: body.jurisdiction!,
-        holderPublicKey: body.holderPublicKey,
+        holderPublicKey: body.holderPublicKey!,
       });
 
       state.log('Issued credential', {
@@ -166,6 +174,24 @@ export function createIssuerApp(options: CreateIssuerAppOptions) {
       }, 400);
     }
 
+    let parsedToken;
+    try {
+      parsedToken = parseAgentCredential(body.token);
+    } catch {
+      return c.json({
+        allowed: false,
+        reason: 'Invalid or corrupted credential',
+      }, 400);
+    }
+
+    const delegationId = getDelegationId(parsedToken.payload.delegation);
+    if (state.isDelegationRevoked(delegationId)) {
+      return c.json({
+        allowed: false,
+        reason: 'Credential has been revoked',
+      });
+    }
+
     const guard = createGuard({
       credential: body.token,
       trustedIssuerKeys: [state.getIssuerPublicKey()],
@@ -180,6 +206,25 @@ export function createIssuerApp(options: CreateIssuerAppOptions) {
     });
 
     return c.json(result);
+  });
+
+  app.post('/delegation/revoke', async (c) => {
+    const body = await c.req.json<RevokeDelegationRequestBody>();
+
+    if (!body.delegationId || typeof body.delegationId !== 'string') {
+      return c.json({
+        revoked: false,
+        error: 'delegationId is required',
+      }, 400);
+    }
+
+    state.revokeDelegation(body.delegationId);
+    state.log('Delegation revoked', { delegationId: body.delegationId });
+
+    return c.json({
+      revoked: true,
+      delegationId: body.delegationId,
+    });
   });
 
   return { app, state };
@@ -200,6 +245,10 @@ function validateIssueCredentialBody(body: IssueCredentialRequestBody): string |
 
   if (!body.jurisdiction || typeof body.jurisdiction !== 'string') {
     return 'jurisdiction is required';
+  }
+
+  if (!body.holderPublicKey || typeof body.holderPublicKey !== 'string') {
+    return 'holderPublicKey is required — the user must supply their own public key for delegation authority';
   }
 
   if (body.tier !== 1 && body.tier !== 2 && body.tier !== 3 && body.tier !== 4) {
