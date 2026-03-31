@@ -46,8 +46,14 @@ tessera/
 ## Getting Started
 
 > **Note:** The SDK is not yet published. This section will be updated when the first alpha is available.
+>
+> **Runtime requirement:** `packages/sdk` now requires Node `>=22.5` because the verifier uses the built-in `node:sqlite` module for persistent nullifier storage.
 
 ```bash
+node --version
+# v22.5.0 or newer
+
+# then
 npm install tessera-sdk
 ```
 
