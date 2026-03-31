@@ -1,6 +1,7 @@
 "use client";
 
 import { TesseraMark } from "@/components/tessera-mark";
+import { useTessera } from "@/lib/tessera-context";
 
 const actions = [
   {
@@ -78,14 +79,36 @@ const actions = [
   },
 ];
 
-const history = [
-  { text: "Identity verified", platform: "dev-tools.io", dot: "bg-status-green", time: "2h ago" },
-  { text: "Identity verified", platform: "marketplace.app", dot: "bg-status-green", time: "1d ago" },
-  { text: "Vouched for user", platform: "tess:0x91c2...4a07", dot: "bg-brand-purple-light", time: "3d ago" },
-  { text: "Content watermarked", platform: "track_final_v3.wav", dot: "bg-brand-purple-light", time: "5d ago" },
-];
+function formatMonth(value: number) {
+  return new Intl.DateTimeFormat("en-GB", {
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatRelative(value: number) {
+  const diff = Date.now() - value;
+  const hours = Math.floor(diff / (60 * 60 * 1000));
+
+  if (hours < 1) {
+    return "just now";
+  }
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 export default function WalletPage() {
+  const { activity, credential } = useTessera();
+
+  if (!credential) {
+    return <div className="py-4 text-sm text-content-muted">Initializing wallet...</div>;
+  }
+
+  const history = activity.slice(0, 4);
+
   return (
     <div className="py-4">
       <h1 className="mb-5 font-display text-[22px] font-semibold tracking-tight text-white">
@@ -103,15 +126,15 @@ export default function WalletPage() {
             </span>
           </div>
           <span className="rounded-full bg-status-green/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-status-green">
-            TIER 1
+            TIER {credential.tier}
           </span>
         </div>
 
         <p className="mb-0.5 text-lg font-semibold text-white">
-          Guglielmo Reggio
+          {credential.name}
         </p>
         <p className="mb-4 font-mono text-xs text-content-dim">
-          tess:0x7a8f...3c21
+          tess:{credential.identityCommitment.slice(0, 12)}...
         </p>
 
         <div className="flex justify-between">
@@ -120,7 +143,7 @@ export default function WalletPage() {
               Issued
             </span>
             <span className="text-[13px] font-medium text-content-primary">
-              Mar 2026
+              {formatMonth(credential.issuedAt)}
             </span>
           </div>
           <div className="flex flex-col gap-0.5">
@@ -128,7 +151,7 @@ export default function WalletPage() {
               Expires
             </span>
             <span className="text-[13px] font-medium text-content-primary">
-              Mar 2027
+              {formatMonth(credential.expiresAt)}
             </span>
           </div>
           <div className="flex flex-col gap-0.5">
@@ -136,7 +159,7 @@ export default function WalletPage() {
               Jurisdiction
             </span>
             <span className="text-[13px] font-medium text-content-primary">
-              EU
+              {credential.jurisdiction}
             </span>
           </div>
         </div>
@@ -189,7 +212,17 @@ export default function WalletPage() {
             className={`flex items-center justify-between px-5 py-3 ${index < history.length - 1 ? "border-b border-line-subtle" : ""}`}
           >
             <div className="flex items-center gap-2.5">
-              <div className={`h-1.5 w-1.5 rounded-full ${entry.dot}`} />
+              <div
+                className={`h-1.5 w-1.5 rounded-full ${
+                  entry.type === "verification"
+                    ? "bg-status-green"
+                    : entry.type === "agent"
+                      ? "bg-brand-purple-light"
+                      : entry.type === "revocation"
+                        ? "bg-status-red"
+                        : "bg-status-warm"
+                }`}
+              />
               <div>
                 <p className="text-xs text-content-primary">{entry.text}</p>
                 <p className="text-[11px] text-content-muted">
@@ -198,7 +231,7 @@ export default function WalletPage() {
               </div>
             </div>
             <span className="font-mono text-[11px] text-content-dim">
-              {entry.time}
+              {formatRelative(entry.timestamp)}
             </span>
           </div>
         ))}

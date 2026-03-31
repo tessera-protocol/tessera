@@ -3,6 +3,7 @@
 import "./globals.css";
 import { DM_Mono, DM_Sans, Fraunces } from "next/font/google";
 import { BottomNav } from "@/components/bottom-nav";
+import { TesseraProvider } from "@/lib/tessera-context";
 
 const dmSans = DM_Sans({
   subsets: ["latin"],
@@ -46,8 +47,10 @@ export default function RootLayout({
         <title>Tessera</title>
       </head>
       <body className="min-h-screen bg-surface-base pb-20 font-sans text-content-primary">
-        <main className="mx-auto max-w-[430px] px-5 pt-3">{children}</main>
-        <BottomNav />
+        <TesseraProvider>
+          <main className="mx-auto max-w-[430px] px-5 pt-3">{children}</main>
+          <BottomNav />
+        </TesseraProvider>
       </body>
     </html>
   );

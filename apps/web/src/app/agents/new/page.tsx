@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useTessera } from "@/lib/tessera-context";
+import type { TesseraAgentRecord } from "@/lib/tessera-store";
 
 const expiryOptions = ["1 hour", "24 hours", "7 days", "30 days"];
 
 export default function NewAgentPage() {
+  const { createAgentWallet } = useTessera();
   const [step, setStep] = useState<"setup" | "confirm">("setup");
   const [name, setName] = useState("");
   const [browse, setBrowse] = useState(true);
@@ -14,9 +17,9 @@ export default function NewAgentPage() {
   const [messages, setMessages] = useState(false);
   const [limit, setLimit] = useState(50);
   const [expiry, setExpiry] = useState("7 days");
+  const [issuedAgent, setIssuedAgent] = useState<TesseraAgentRecord | null>(null);
 
-  const token =
-    "eyJhbGciOiJFZERTQSIsInR5cCI6InRlc3NlcmErYWdlbnQifQ.eyJwYXJlbnQiOiIweDdhOGYzYzIxIiwibmFtZSI6Im15LXJlc2VhcmNoLWFnZW50Iiwic2NvcGUiOnsiYnJvd3NlIjp0cnVlLCJwb3N0Ijp0cnVl...";
+  const token = issuedAgent?.token ?? "";
 
   if (step === "confirm") {
     const scopes = [browse && "browse", post && "post", transact && "transact", messages && "messages"]
@@ -61,7 +64,7 @@ export default function NewAgentPage() {
             Wallet issued
           </h1>
           <p className="text-[13px] text-content-muted">
-            {name || "my-agent"} is ready to go
+            {issuedAgent?.name || name || "my-agent"} is ready to go
           </p>
         </div>
 
@@ -77,13 +80,19 @@ export default function NewAgentPage() {
               Spending limit
             </span>
             <span className="font-mono text-[13px] text-status-warm">
-              {limit} EUR
+              {issuedAgent?.scope.maxTransactionValue ?? limit} EUR
             </span>
           </div>
           <div className="flex justify-between py-2">
             <span className="text-[13px] text-content-muted">Expires</span>
             <span className="font-mono text-[13px] text-content-primary">
-              {expiry}
+              {issuedAgent
+                ? new Intl.DateTimeFormat("en-GB", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  }).format(new Date(issuedAgent.expiresAt))
+                : expiry}
             </span>
           </div>
         </div>
@@ -251,7 +260,28 @@ export default function NewAgentPage() {
       </div>
 
       <button
-        onClick={() => setStep("confirm")}
+        onClick={async () => {
+          const expiryMsMap: Record<string, number> = {
+            "1 hour": 60 * 60 * 1000,
+            "24 hours": 24 * 60 * 60 * 1000,
+            "7 days": 7 * 24 * 60 * 60 * 1000,
+            "30 days": 30 * 24 * 60 * 60 * 1000,
+          };
+          const created = await createAgentWallet({
+            name: name || "my-agent",
+            scope: {
+              browse,
+              post,
+              transact,
+              messages,
+              maxTransactionValue: transact ? limit : 0,
+              currency: "EUR",
+            },
+            expiryMs: expiryMsMap[expiry],
+          });
+          setIssuedAgent(created);
+          setStep("confirm");
+        }}
         className="w-full rounded-xl bg-brand-purple py-4 text-[15px] font-semibold text-white transition-colors hover:bg-brand-purple-dark"
       >
         Issue agent wallet

@@ -1,6 +1,8 @@
 "use client";
 
 import { TesseraMark } from "@/components/tessera-mark";
+import { useTessera } from "@/lib/tessera-context";
+import { useState } from "react";
 
 function QRCode() {
   return (
@@ -118,16 +120,42 @@ const actions = [
   },
 ];
 
-const credential = {
-  name: "Guglielmo Reggio",
-  id: "tess:0x7a8f...3c21",
-  tier: 1,
-  jurisdiction: "EU",
-  memberSince: "Mar 2026",
-  activeAgents: 3,
-};
+function truncate(value: string, length = 18) {
+  if (value.length <= length) {
+    return value;
+  }
+
+  return `${value.slice(0, length)}...`;
+}
+
+function formatMonth(value: number) {
+  return new Intl.DateTimeFormat("en-GB", {
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatDate(value: number) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
 
 export default function PassportPage() {
+  const { agents, credential, generateProof } = useTessera();
+  const [proofSummary, setProofSummary] = useState<{
+    title: string;
+    detail: string;
+  } | null>(null);
+
+  const activeAgents = agents.filter((agent) => agent.status === "active").length;
+
+  if (!credential) {
+    return <div className="py-4 text-sm text-content-muted">Initializing credential...</div>;
+  }
+
   return (
     <div className="py-4">
       <div className="mb-4 rounded-3xl border border-line bg-surface-raised p-7">
@@ -142,7 +170,7 @@ export default function PassportPage() {
           {credential.name}
         </h1>
         <p className="mb-6 font-mono text-xs text-content-dim">
-          {credential.id}
+          {truncate(credential.identityCommitment, 24)}
         </p>
 
         <div className="mb-5 h-px bg-line-subtle" />
@@ -153,7 +181,7 @@ export default function PassportPage() {
               Member since
             </span>
             <span className="text-sm font-medium text-content-primary">
-              {credential.memberSince}
+              {formatMonth(credential.issuedAt)}
             </span>
           </div>
           <div className="flex flex-col gap-0.5">
@@ -169,13 +197,23 @@ export default function PassportPage() {
               Agents
             </span>
             <span className="text-sm font-medium text-content-primary">
-              {credential.activeAgents} active
+              {activeAgents} active
             </span>
           </div>
         </div>
       </div>
 
-      <div className="mb-4 flex items-center gap-5 rounded-2xl border border-line bg-surface-raised p-5">
+      <button
+        type="button"
+        onClick={async () => {
+          const proof = await generateProof("demo-platform");
+          setProofSummary({
+            title: proof.note ? "Proof fallback ready" : "Semaphore proof ready",
+            detail: truncate(proof.semaphoreProof.nullifier, 24),
+          });
+        }}
+        className="mb-4 flex w-full items-center gap-5 rounded-2xl border border-line bg-surface-raised p-5 text-left"
+      >
         <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-white">
           <QRCode />
         </div>
@@ -184,8 +222,31 @@ export default function PassportPage() {
             Verify or vouch
           </p>
           <p className="text-xs leading-relaxed text-content-muted">
-            Scan to prove your identity or vouch for someone in person
+            {proofSummary
+              ? `${proofSummary.title}: ${proofSummary.detail}`
+              : "Generate a live Semaphore proof for demo-platform"}
           </p>
+        </div>
+      </button>
+
+      <div className="mb-4 rounded-2xl border border-line bg-surface-raised p-4">
+        <div className="flex justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-content-dim">
+              Expires
+            </p>
+            <p className="mt-1 text-sm font-medium text-content-primary">
+              {formatDate(credential.expiresAt)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-content-dim">
+              Issuer sig
+            </p>
+            <p className="mt-1 font-mono text-[11px] text-content-muted">
+              {truncate(credential.issuerSignature, 18)}
+            </p>
+          </div>
         </div>
       </div>
 

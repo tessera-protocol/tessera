@@ -1,71 +1,95 @@
 "use client";
 
 import Link from "next/link";
+import { useTessera } from "@/lib/tessera-context";
 
-const agents = {
-  "claude-code": {
-    name: "claude-code",
-    id: "tess:agent:0x4d2a...8f11",
-    status: "Active",
-    issued: "Mar 29",
-    expires: "Apr 3, 11:00",
-    iconBg: "bg-brand-purple/15",
-    iconStroke: "#7F77DD",
-    permissions: [
-      { name: "Post content", value: "allowed", style: "text-status-green" },
-      { name: "Transact", value: "allowed", style: "text-status-green" },
-      { name: "Spending limit", value: "50 EUR", style: "text-status-warm" },
-      { name: "Categories", value: "saas, api", style: "text-status-green" },
-      { name: "Browse", value: "not allowed", style: "text-content-dim" },
-    ],
-  },
-  "mcp-browser": {
-    name: "mcp-browser",
-    id: "tess:agent:0x7bc1...2e30",
-    status: "Active",
-    issued: "Mar 31",
-    expires: "Apr 7, 19:00",
-    iconBg: "bg-status-green/12",
-    iconStroke: "#7ec89f",
-    permissions: [
-      { name: "Browse", value: "allowed", style: "text-status-green" },
-      { name: "Post content", value: "allowed", style: "text-status-green" },
-      { name: "Transact", value: "not allowed", style: "text-content-dim" },
-      { name: "Spending limit", value: "none", style: "text-content-dim" },
-      { name: "Categories", value: "general", style: "text-status-green" },
-    ],
-  },
-  "openclaw-v1": {
-    name: "openclaw-v1",
-    id: "tess:agent:0x91c2...4a07",
-    status: "Revoked",
-    issued: "Mar 22",
-    expires: "Revoked Mar 29",
-    iconBg: "bg-status-red/[0.08]",
-    iconStroke: "#e88",
-    permissions: [
-      { name: "Post content", value: "revoked", style: "text-status-red" },
-      { name: "Transact", value: "revoked", style: "text-status-red" },
-      { name: "Spending limit", value: "0 EUR", style: "text-status-red" },
-      { name: "Categories", value: "none", style: "text-content-dim" },
-      { name: "Browse", value: "revoked", style: "text-status-red" },
-    ],
-  },
-} as const;
+function formatDate(value: number) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
 
-const activity = [
-  { text: "Verified on dev-tools.io", dot: "bg-status-green", time: "2h ago" },
-  { text: "Verified on mcp-hub.com", dot: "bg-status-green", time: "1d ago" },
-  { text: "Token exported", dot: "bg-brand-purple-light", time: "2d ago" },
-  { text: "Wallet issued", dot: "bg-brand-purple-light", time: "2d ago" },
-];
+function formatActivityTime(value: number) {
+  const diff = Date.now() - value;
+  const hours = Math.floor(diff / (60 * 60 * 1000));
 
-const token =
-  "eyJhbGciOiJFZERTQSIsInR5cCI6InRlc3NlcmErYWdlbnQifQ.eyJwYXJlbnQiOiIweDdhOGYuLi4zYzIxIiwibmFtZSI6ImNsYXVkZS1jb2RlIiwic2NvcGUiOnsiY2FuUG9zdCI6dHJ1ZSwiY2FuVHJh...";
+  if (hours < 1) {
+    return "just now";
+  }
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 export function AgentDetailClient({ id }: { id: string }) {
-  const agent = agents[id as keyof typeof agents] ?? agents["claude-code"];
-  const isRevoked = agent.status === "Revoked";
+  const { activity, agents, revokeAgent } = useTessera();
+  const agent = agents.find((item) => item.id === id) ?? null;
+
+  if (!agent) {
+    return (
+      <div className="py-4">
+        <Link href="/agents" className="mb-5 flex items-center gap-1.5">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#7F77DD"
+            strokeWidth="1.5"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          <span className="text-sm font-medium text-brand-purple-light">
+            Agents
+          </span>
+        </Link>
+        <div className="rounded-[14px] border border-line bg-surface-raised p-5">
+          <p className="text-sm font-medium text-content-primary">
+            Agent not found
+          </p>
+          <p className="mt-1 text-xs text-content-muted">
+            This route does not match an agent stored in local state.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const isRevoked = agent.status === "revoked";
+  const permissions = [
+    {
+      name: "Browse",
+      value: agent.scope.browse ? "allowed" : "not allowed",
+      style: agent.scope.browse ? "text-status-green" : "text-content-dim",
+    },
+    {
+      name: "Post content",
+      value: agent.scope.post ? "allowed" : "not allowed",
+      style: agent.scope.post ? "text-status-green" : "text-content-dim",
+    },
+    {
+      name: "Transact",
+      value: agent.scope.transact ? "allowed" : "not allowed",
+      style: agent.scope.transact ? "text-status-green" : "text-content-dim",
+    },
+    {
+      name: "Send messages",
+      value: agent.scope.messages ? "allowed" : "not allowed",
+      style: agent.scope.messages ? "text-status-green" : "text-content-dim",
+    },
+    {
+      name: "Spending limit",
+      value: `${agent.scope.maxTransactionValue} ${agent.scope.currency}`,
+      style: agent.scope.maxTransactionValue > 0 ? "text-status-warm" : "text-content-dim",
+    },
+  ];
+  const relatedActivity = activity
+    .filter((entry) => entry.platform === agent.name)
+    .slice(0, 4);
 
   return (
     <div className="py-4">
@@ -87,14 +111,14 @@ export function AgentDetailClient({ id }: { id: string }) {
 
       <div className="mb-6 flex items-center gap-3.5">
         <div
-          className={`flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[14px] ${agent.iconBg}`}
+          className={`flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[14px] ${isRevoked ? "bg-status-red/[0.08]" : "bg-brand-purple/15"}`}
         >
           <svg
             width="24"
             height="24"
             viewBox="0 0 24 24"
             fill="none"
-            stroke={agent.iconStroke}
+            stroke={isRevoked ? "#e88" : "#7F77DD"}
             strokeWidth="1.5"
           >
             <path d="M8 9l3 3-3 3" />
@@ -106,7 +130,9 @@ export function AgentDetailClient({ id }: { id: string }) {
           <h1 className="font-display text-[22px] font-semibold tracking-tight text-white">
             {agent.name}
           </h1>
-          <p className="font-mono text-xs text-content-dim">{agent.id}</p>
+          <p className="font-mono text-xs text-content-dim">
+            tess:agent:{agent.publicKey.slice(0, 12)}...
+          </p>
         </div>
       </div>
 
@@ -118,7 +144,7 @@ export function AgentDetailClient({ id }: { id: string }) {
           <span
             className={`text-[13px] font-medium ${isRevoked ? "text-status-red" : "text-status-green"}`}
           >
-            {agent.status}
+            {isRevoked ? "Revoked" : "Active"}
           </span>
         </div>
         <div className="flex flex-1 flex-col gap-0.5">
@@ -126,7 +152,7 @@ export function AgentDetailClient({ id }: { id: string }) {
             Issued
           </span>
           <span className="text-[13px] font-medium text-content-primary">
-            {agent.issued}
+            {formatDate(agent.issuedAt)}
           </span>
         </div>
         <div className="flex flex-1 flex-col gap-0.5">
@@ -134,7 +160,7 @@ export function AgentDetailClient({ id }: { id: string }) {
             Expires
           </span>
           <span className="text-[13px] font-medium text-content-primary">
-            {agent.expires}
+            {formatDate(agent.expiresAt)}
           </span>
         </div>
       </div>
@@ -143,10 +169,10 @@ export function AgentDetailClient({ id }: { id: string }) {
         Permissions
       </p>
       <div className="mb-4 overflow-hidden rounded-[14px] border border-line bg-surface-raised">
-        {agent.permissions.map((permission, index) => (
+        {permissions.map((permission, index) => (
           <div
             key={permission.name}
-            className={`flex items-center justify-between px-5 py-3.5 ${index < agent.permissions.length - 1 ? "border-b border-line-subtle" : ""}`}
+            className={`flex items-center justify-between px-5 py-3.5 ${index < permissions.length - 1 ? "border-b border-line-subtle" : ""}`}
           >
             <span className="text-[13px] text-content-primary">
               {permission.name}
@@ -163,7 +189,7 @@ export function AgentDetailClient({ id }: { id: string }) {
       </p>
       <div className="mb-4 rounded-[14px] border border-line bg-surface-raised p-5">
         <div className="mb-3 break-all rounded-lg border border-line bg-surface-base p-3 font-mono text-[11px] leading-relaxed text-content-muted">
-          {token}
+          {agent.token}
         </div>
         <div className="flex gap-2">
           <button className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand-purple/15 px-4 py-2 text-xs font-semibold text-brand-purple-light">
@@ -202,23 +228,40 @@ export function AgentDetailClient({ id }: { id: string }) {
         Recent activity
       </p>
       <div className="mb-4 overflow-hidden rounded-[14px] border border-line bg-surface-raised">
-        {activity.map((entry, index) => (
+        {relatedActivity.length === 0 ? (
+          <div className="px-5 py-4 text-xs text-content-muted">
+            No agent-specific activity yet.
+          </div>
+        ) : null}
+        {relatedActivity.map((entry, index) => (
           <div
             key={`${entry.text}-${index}`}
-            className={`flex items-center justify-between px-5 py-3 ${index < activity.length - 1 ? "border-b border-line-subtle" : ""}`}
+            className={`flex items-center justify-between px-5 py-3 ${index < relatedActivity.length - 1 ? "border-b border-line-subtle" : ""}`}
           >
             <div className="flex items-center gap-2.5">
-              <div className={`h-1.5 w-1.5 rounded-full ${entry.dot}`} />
+              <div
+                className={`h-1.5 w-1.5 rounded-full ${
+                  entry.type === "revocation"
+                    ? "bg-status-red"
+                    : entry.type === "verification"
+                      ? "bg-status-green"
+                      : "bg-brand-purple-light"
+                }`}
+              />
               <span className="text-xs text-content-primary">{entry.text}</span>
             </div>
             <span className="font-mono text-[11px] text-content-dim">
-              {entry.time}
+              {formatActivityTime(entry.timestamp)}
             </span>
           </div>
         ))}
       </div>
 
-      <button className="w-full rounded-[10px] border border-status-red/30 bg-status-red/[0.06] py-3.5 text-sm font-semibold text-status-red transition-colors hover:bg-status-red/[0.12]">
+      <button
+        type="button"
+        onClick={() => revokeAgent(agent.id)}
+        className="w-full rounded-[10px] border border-status-red/30 bg-status-red/[0.06] py-3.5 text-sm font-semibold text-status-red transition-colors hover:bg-status-red/[0.12]"
+      >
         Revoke this agent
       </button>
     </div>
