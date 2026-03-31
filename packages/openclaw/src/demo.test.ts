@@ -38,6 +38,7 @@ describe('demo scenarios', () => {
           status: 'active',
         },
       }),
+      trustedIssuerKeys: [keys.publicKeyPem],
       offlineMode: true,
     });
     const revokedGuard = createGuard({
@@ -50,16 +51,47 @@ describe('demo scenarios', () => {
           revokedAt: Math.floor(Date.now() / 1000),
         },
       }),
+      trustedIssuerKeys: [keys.publicKeyPem],
+      offlineMode: true,
+    });
+    const rogueKeys = generateIssuerKeypair();
+    const rogueIssuer = createIssuer({
+      issuerPrivateKeyPem: rogueKeys.privateKeyPem,
+      issuerPublicKeyPem: rogueKeys.publicKeyPem,
+    });
+    const rogueIssued = rogueIssuer.issue({
+      tier: 1,
+      jurisdiction: 'EU',
+      anchorHash: 'rogue-anchor',
+    });
+    const rogueDelegation = createDelegation(rogueIssued.holderSecretKey, rogueIssued.credential, {
+      agentName: 'rogue-agent',
+      scope: {
+        canPost: true,
+        maxRecipients: 20,
+      },
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+    const rogueGuard = createGuard({
+      credential: serializeAgentCredential({
+        version: 'tessera.openclaw/v1',
+        credential: rogueIssued.credential,
+        delegation: rogueDelegation,
+      }),
+      trustedIssuerKeys: [keys.publicKeyPem],
       offlineMode: true,
     });
 
     const emailAllowed = await activeGuard.check('email.send', { recipientCount: 5 });
     const shellBlocked = await activeGuard.check('exec.shell', { command: 'ls' });
+    const rogueDenied = await rogueGuard.check('email.send', { recipientCount: 1 });
     const emailAfterRevoke = await revokedGuard.check('email.send', { recipientCount: 1 });
 
     assert.equal(emailAllowed.allowed, true);
     assert.equal(shellBlocked.allowed, false);
     assert.match(shellBlocked.reason ?? '', /shell execution/);
+    assert.equal(rogueDenied.allowed, false);
+    assert.match(rogueDenied.reason ?? '', /untrusted issuer/);
     assert.equal(emailAfterRevoke.allowed, false);
     assert.match(emailAfterRevoke.reason ?? '', /revoked/);
   });

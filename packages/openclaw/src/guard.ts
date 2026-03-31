@@ -15,6 +15,7 @@ import {
 
 export interface GuardConfig {
   credential: string;
+  trustedIssuerKeys: string[];
   issuerUrl?: string;
   offlineMode?: boolean;
   onDeny?: (action: string, reason: string) => void;
@@ -28,17 +29,57 @@ export interface GuardResult {
   suggestion?: string;
 }
 
-export function createGuard(config: GuardConfig) {
-  const parsed = parseAgentCredential(config.credential);
-  const issuerUrl = config.issuerUrl ?? parsed.payload.metadata?.issuerUrl ?? 'http://localhost:3001';
-  const offlineMode = config.offlineMode ?? false;
+export interface GuardStatus {
+  credentialValid: boolean;
+  expiresIn: string;
+  scope: object;
+}
+
+export interface GuardInstance {
+  check(action: string, resource?: object): Promise<GuardResult>;
+  getStatus(): GuardStatus;
+  getAgentMessage(): string;
+}
+
+const INVALID_CREDENTIAL_REASON = 'Invalid or corrupted credential';
+const INVALID_CREDENTIAL_SUGGESTION = 'Ask the user to re-issue the Tessera credential';
+
+export function createGuard(config: GuardConfig): GuardInstance {
+  if (!Array.isArray(config.trustedIssuerKeys) || config.trustedIssuerKeys.length === 0) {
+    throw new Error('trustedIssuerKeys is required — the guard must know which issuers to trust');
+  }
+
+  let parsed: SerializedAgentCredentialPayload | null = null;
+  let degradedReason: string | null = null;
+
+  try {
+    parsed = parseAgentCredential(config.credential).payload;
+  } catch {
+    degradedReason = INVALID_CREDENTIAL_REASON;
+  }
+
+  const issuerUrl = config.issuerUrl ?? parsed?.metadata?.issuerUrl ?? 'http://localhost:3001';
+  // Default to offline mode so the guard works out of the box; online mode adds
+  // issuer-backed revocation checks and requires a running issuer service.
+  const offlineMode = config.offlineMode ?? true;
 
   return {
     async check(action: string, resource?: object): Promise<GuardResult> {
       const classifiedAction = classifyAction(action) ?? action;
-      const localValidation = validateTokenLocally(parsed.payload);
+      if (degradedReason || !parsed) {
+        const result = {
+          allowed: false,
+          reason: INVALID_CREDENTIAL_REASON,
+          scope: {},
+          suggestion: INVALID_CREDENTIAL_SUGGESTION,
+        };
+        config.onDeny?.(classifiedAction, result.reason);
+        return result;
+      }
+
+      const localValidation = validateTokenLocally(parsed, config.trustedIssuerKeys);
       if (!localValidation.valid) {
-        const result = deny(classifiedAction, localValidation.reason!, parsed.payload.delegation.scope);
+        const result = deny(classifiedAction, localValidation.reason!, parsed.delegation.scope);
         config.onDeny?.(classifiedAction, result.reason!);
         return result;
       }
@@ -47,7 +88,7 @@ export function createGuard(config: GuardConfig) {
         const result = deny(
           classifiedAction,
           `Action "${action}" is not recognised by Tessera Guard`,
-          parsed.payload.delegation.scope,
+          parsed.delegation.scope,
         );
         config.onDeny?.(classifiedAction, result.reason!);
         return result;
@@ -55,11 +96,11 @@ export function createGuard(config: GuardConfig) {
 
       const scopeResult = isActionAllowedByScope(
         classifiedAction,
-        parsed.payload.delegation.scope,
+        parsed.delegation.scope,
         (resource ?? {}) as Record<string, unknown>,
       );
       if (!scopeResult.allowed) {
-        const result = deny(classifiedAction, scopeResult.reason!, parsed.payload.delegation.scope);
+        const result = deny(classifiedAction, scopeResult.reason!, parsed.delegation.scope);
         config.onDeny?.(classifiedAction, result.reason!);
         return result;
       }
@@ -67,12 +108,12 @@ export function createGuard(config: GuardConfig) {
       if (!offlineMode) {
         const onlineResult = await verifyOnline({
           issuerUrl,
-          credential: config.credential,
+          token: config.credential,
           action: classifiedAction,
           resource,
         });
         if (!onlineResult.allowed) {
-          const result = deny(classifiedAction, onlineResult.reason!, parsed.payload.delegation.scope);
+          const result = deny(classifiedAction, onlineResult.reason!, parsed.delegation.scope);
           config.onDeny?.(classifiedAction, result.reason!);
           return result;
         }
@@ -81,31 +122,43 @@ export function createGuard(config: GuardConfig) {
       config.onAllow?.(classifiedAction);
       return {
         allowed: true,
-        scope: parsed.payload.delegation.scope,
+        scope: parsed.delegation.scope,
       };
     },
 
     getStatus() {
-      const validation = validateTokenLocally(parsed.payload);
+      if (degradedReason || !parsed) {
+        return {
+          credentialValid: false,
+          expiresIn: 'N/A',
+          scope: {},
+        };
+      }
+
+      const validation = validateTokenLocally(parsed, config.trustedIssuerKeys);
       return {
         credentialValid: validation.valid,
-        expiresIn: formatDuration(parsed.payload.delegation.expiresAt),
-        scope: parsed.payload.delegation.scope,
+        expiresIn: formatDuration(parsed.delegation.expiresAt),
+        scope: parsed.delegation.scope,
       };
     },
 
     getAgentMessage() {
-      const validation = validateTokenLocally(parsed.payload);
+      if (degradedReason || !parsed) {
+        return 'My Tessera credential is invalid or corrupted. I cannot perform any sensitive actions. Please ask the user to re-issue the credential from the Tessera app.';
+      }
+
+      const validation = validateTokenLocally(parsed, config.trustedIssuerKeys);
       if (!validation.valid) {
         return `I have a Tessera credential, but it is not currently valid: ${validation.reason}.`;
       }
 
-      const positives = describeScope(parsed.payload.delegation.scope);
+      const positives = describeScope(parsed.delegation.scope);
       const negatives: string[] = [];
-      if (!(parsed.payload.delegation.scope as Record<string, unknown>).canExecShell) {
+      if (!(parsed.delegation.scope as Record<string, unknown>).canExecShell) {
         negatives.push('run shell commands');
       }
-      const maxRecipients = (parsed.payload.delegation.scope as Record<string, unknown>).maxRecipients;
+      const maxRecipients = (parsed.delegation.scope as Record<string, unknown>).maxRecipients;
       if (typeof maxRecipients === 'number') {
         negatives.push(`send emails to more than ${maxRecipients} recipients`);
       }
@@ -119,7 +172,7 @@ export function createGuard(config: GuardConfig) {
       }
 
       sentences.push(
-        `My credential expires ${formatDuration(parsed.payload.delegation.expiresAt)}.`,
+        `My credential expires ${formatDuration(parsed.delegation.expiresAt)}.`,
       );
       sentences.push(
         'If you need me to do something outside these permissions, you can issue a broader credential from the Tessera app.',
@@ -132,6 +185,7 @@ export function createGuard(config: GuardConfig) {
 
 function validateTokenLocally(
   payload: SerializedAgentCredentialPayload,
+  trustedIssuerKeys: string[],
 ): { valid: true } | { valid: false; reason: string } {
   if (payload.delegation.status === 'revoked' || payload.delegation.revokedAt) {
     return { valid: false, reason: 'Credential has been revoked' };
@@ -157,9 +211,13 @@ function validateTokenLocally(
     return { valid: false, reason: 'Delegated scope exceeds parent scope' };
   }
 
+  if (!trustedIssuerKeys.includes(payload.credential.issuerPublicKey)) {
+    return { valid: false, reason: 'Credential signed by untrusted issuer' };
+  }
+
   const credentialValid = verifyCredentialSignature(
     payload.credential as TesseraCredential,
-    [payload.credential.issuerPublicKey],
+    trustedIssuerKeys,
   );
   if (!credentialValid) {
     return { valid: false, reason: 'Issuer signature verification failed' };
@@ -179,7 +237,7 @@ function validateTokenLocally(
 
 async function verifyOnline(params: {
   issuerUrl: string;
-  credential: string;
+  token: string;
   action: string;
   resource?: object;
 }): Promise<{ allowed: boolean; reason?: string }> {
@@ -190,7 +248,7 @@ async function verifyOnline(params: {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        credential: params.credential,
+        token: params.token,
         action: params.action,
         resource: params.resource ?? null,
       }),

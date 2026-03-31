@@ -29,6 +29,7 @@ import { createGuard } from '@tessera-protocol/openclaw';
 
 const guard = createGuard({
   credential: process.env.TESSERA_AGENT_CREDENTIAL!,
+  trustedIssuerKeys: [process.env.TESSERA_ISSUER_PUBLIC_KEY!],
   issuerUrl: 'http://localhost:3001',
   offlineMode: true,
 });
@@ -66,3 +67,5 @@ guard.getAgentMessage();
 - `tessera_check_permission`
 - `tessera_show_permissions`
 - `tessera_request_upgrade`
+
+Use `createSkillHandlers(guard)` from the package to bind executable handler functions for these tools inside the host runtime.

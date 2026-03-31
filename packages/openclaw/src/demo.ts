@@ -33,9 +33,18 @@ async function main() {
     jurisdiction: 'EU',
     anchorHash: 'openclaw-demo-anchor',
   });
+  const trustedIssuerKeys = [issuerKeys.publicKeyPem];
 
   section('1. Agent tries to send email without Tessera');
-  await timedCheck(createGuardFromPayload(makeRevokedPayload(issued)), 'email.send', { recipientCount: 1 });
+  await timedCheck(
+    createGuard({
+      credential: '',
+      trustedIssuerKeys,
+      offlineMode: true,
+    }),
+    'email.send',
+    { recipientCount: 1 },
+  );
   await pause(250);
 
   section('2. User binds a Tessera credential with email + payment scope');
@@ -69,33 +78,70 @@ async function main() {
     metadata: {
       agentName: 'openclaw-assistant',
     },
-  });
+  }, trustedIssuerKeys);
   detail(activeGuard.getAgentMessage());
   await pause(250);
 
-  section('3. Agent sends email');
+  section('3. Untrusted issuer tries to present a credential');
+  const rogueIssuerKeys = generateIssuerKeypair();
+  const rogueIssuer = createIssuer({
+    issuerPrivateKeyPem: rogueIssuerKeys.privateKeyPem,
+    issuerPublicKeyPem: rogueIssuerKeys.publicKeyPem,
+  });
+  const rogueIssued = rogueIssuer.issue({
+    tier: 1,
+    jurisdiction: 'EU',
+    anchorHash: 'openclaw-demo-rogue-anchor',
+  });
+  const rogueDelegation = createDelegation(rogueIssued.holderSecretKey, rogueIssued.credential, {
+    agentName: 'rogue-agent',
+    scope: {
+      canPost: true,
+      maxRecipients: 20,
+    },
+    expiresAt: Math.floor(Date.now() / 1000) + 3600,
+  });
+  await timedCheck(
+    createGuardFromPayload({
+      version: 'tessera.openclaw/v1',
+      credential: rogueIssued.credential,
+      delegation: rogueDelegation,
+      metadata: {
+        agentName: 'rogue-agent',
+      },
+    }, trustedIssuerKeys),
+    'email.send',
+    { recipientCount: 1 },
+  );
+  await pause(250);
+
+  section('4. Agent sends email');
   await timedCheck(activeGuard, 'email.send', {
     recipientCount: 5,
     recipientDomains: ['acme.io'],
   });
   await pause(250);
 
-  section('4. Agent tries to run shell command');
+  section('5. Agent tries to run shell command');
   await timedCheck(activeGuard, 'exec.shell', {
     command: 'rm -rf /tmp/demo',
   });
   await pause(250);
 
-  section('5. User revokes credential, agent tries email again');
-  const revokedGuard = createGuardFromPayload(makeRevokedPayload(issued, delegation));
+  section('6. User revokes credential, agent tries email again');
+  const revokedGuard = createGuardFromPayload(makeRevokedPayload(issued, delegation), trustedIssuerKeys);
   await timedCheck(revokedGuard, 'email.send', {
     recipientCount: 1,
   });
 }
 
-function createGuardFromPayload(payload: Parameters<typeof serializeAgentCredential>[0]) {
+function createGuardFromPayload(
+  payload: Parameters<typeof serializeAgentCredential>[0],
+  trustedIssuerKeys: string[],
+) {
   return createGuard({
     credential: serializeAgentCredential(payload),
+    trustedIssuerKeys,
     offlineMode: true,
   });
 }

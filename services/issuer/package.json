@@ -16,6 +16,7 @@
   "dependencies": {
     "@hono/node-server": "^1.13.8",
     "@semaphore-protocol/group": "^4.0.0",
+    "@tessera-protocol/openclaw": "file:../../packages/openclaw",
     "@semaphore-protocol/identity": "^4.0.0",
     "@tessera-protocol/sdk": "file:../../packages/sdk",
     "hono": "^4.8.12"

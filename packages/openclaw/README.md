@@ -11,6 +11,7 @@ import { createGuard } from '@tessera-protocol/openclaw';
 
 const guard = createGuard({
   credential: process.env.TESSERA_AGENT_CREDENTIAL!,
+  trustedIssuerKeys: [process.env.TESSERA_ISSUER_PUBLIC_KEY!],
 });
 
 const result = await guard.check('email.send', { recipientCount: 5 });
@@ -35,8 +36,17 @@ if (!result.allowed) {
 
 ## Online vs Offline
 
-- Offline mode verifies the embedded Tessera credential and delegation locally using the SDK's cryptographic primitives.
-- Online mode also calls an issuer endpoint at `POST /guard/check`. If the endpoint is unavailable or returns an error, the guard denies the action.
+- Offline mode is the default. It verifies the embedded Tessera credential and delegation locally using the SDK's cryptographic primitives and a caller-supplied trusted issuer key list.
+- Online mode additionally calls an issuer endpoint at `POST /guard/check` for issuer-backed revocation and policy checks. It requires a running issuer service.
+
+```ts
+const guard = createGuard({
+  credential: process.env.TESSERA_AGENT_CREDENTIAL!,
+  trustedIssuerKeys: [process.env.TESSERA_ISSUER_PUBLIC_KEY!],
+  offlineMode: false,
+  issuerUrl: 'http://localhost:3001',
+});
+```
 
 ## Human-Legible Permission State
 

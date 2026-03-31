@@ -8,7 +8,12 @@ import assert from 'node:assert/strict';
 import { serve } from '@hono/node-server';
 import { Identity } from '@semaphore-protocol/identity';
 import { Group } from '@semaphore-protocol/group';
-import { prove } from '@tessera-protocol/sdk';
+import {
+  createDelegation,
+  createIssuer,
+  prove,
+} from '@tessera-protocol/sdk';
+import { serializeAgentCredential } from '@tessera-protocol/openclaw';
 import { createIssuerApp } from './app.js';
 
 const tempDirs: string[] = [];
@@ -100,6 +105,61 @@ test('issuer service issues credentials, returns roots, and verifies proofs', as
     assert.equal(verifyPayload.type, 'human');
     assert.equal(verifyPayload.tier, 1);
     assert.equal(verifyPayload.scope, null);
+
+    const issuerKeys = JSON.parse(
+      readFileSync(join(dataDir, 'issuer-keys.json'), 'utf8'),
+    ) as {
+      privateKeyPem: string;
+      publicKeyPem: string;
+    };
+    const mirrorIssuer = createIssuer({
+      issuerPrivateKeyPem: issuerKeys.privateKeyPem,
+      issuerPublicKeyPem: issuerKeys.publicKeyPem,
+    });
+    const mirrorIssued = mirrorIssuer.issue({
+      tier: 1,
+      jurisdiction: 'EU',
+      anchorHash: 'guard-test-anchor',
+    });
+    const delegation = createDelegation(mirrorIssued.holderSecretKey, mirrorIssued.credential, {
+      agentName: 'guard-test-agent',
+      scope: {
+        canPost: true,
+        maxRecipients: 3,
+      },
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+    const token = serializeAgentCredential({
+      version: 'tessera.openclaw/v1',
+      credential: mirrorIssued.credential,
+      delegation,
+    });
+
+    const guardAllowed = await requestJson(baseUrl, '/guard/check', {
+      method: 'POST',
+      body: {
+        token,
+        action: 'email.send',
+        resource: {
+          recipientCount: 2,
+        },
+      },
+    });
+    assert.equal(guardAllowed.status, 200);
+    assert.equal((guardAllowed.json as { allowed: boolean }).allowed, true);
+
+    const guardDenied = await requestJson(baseUrl, '/guard/check', {
+      method: 'POST',
+      body: {
+        token,
+        action: 'email.send',
+        resource: {
+          recipientCount: 5,
+        },
+      },
+    });
+    assert.equal(guardDenied.status, 200);
+    assert.equal((guardDenied.json as { allowed: boolean }).allowed, false);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {
