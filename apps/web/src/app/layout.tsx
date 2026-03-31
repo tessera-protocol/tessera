@@ -10,33 +10,44 @@ const dmSans = DM_Sans({
   variable: "--font-dm-sans",
 });
 
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  weight: ["300", "600"],
-  variable: "--font-fraunces",
-});
-
 const dmMono = DM_Mono({
   subsets: ["latin"],
   weight: ["400", "500"],
   variable: "--font-dm-mono",
 });
 
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  weight: ["300", "600"],
+  variable: "--font-fraunces",
+});
+
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html
       lang="en"
-      className={`${dmSans.variable} ${fraunces.variable} ${dmMono.variable}`}
+      className={`${dmSans.variable} ${dmMono.variable} ${fraunces.variable}`}
     >
-      <body className="min-h-screen bg-[#0F1117] text-[#e0e0e8]">
-        <div className="mx-auto flex min-h-screen max-w-md flex-col bg-[#0F1117]">
-          <main className="flex-1 px-5 pb-28 pt-8">{children}</main>
-          <BottomNav />
-        </div>
+      <head>
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, viewport-fit=cover"
+        />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta
+          name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent"
+        />
+        <meta name="theme-color" content="#0F1117" />
+        <title>Tessera</title>
+      </head>
+      <body className="min-h-screen bg-surface-base pb-20 font-sans text-content-primary">
+        <main className="mx-auto max-w-[430px] px-5 pt-3">{children}</main>
+        <BottomNav />
       </body>
     </html>
   );

@@ -1,42 +1,51 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  content: ["./src/**/*.{ts,tsx}"],
+  content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
       colors: {
-        purple: {
-          DEFAULT: "#534AB7",
-          light: "#7F77DD",
-          dark: "#3C3489",
-          pale: "#AFA9EC",
-          palest: "#EEEDFE",
+        brand: {
+          purple: {
+            DEFAULT: "#534AB7",
+            light: "#7F77DD",
+            dark: "#3C3489",
+            pale: "#AFA9EC",
+            palest: "#EEEDFE",
+          },
         },
-        bg: {
-          dark: "#0F1117",
+        surface: {
+          base: "#0F1117",
           raised: "#12121a",
           card: "#16161f",
         },
-        border: {
-          subtle: "#2a2a3a",
+        line: {
+          DEFAULT: "#2a2a3a",
+          subtle: "#1e1e2a",
         },
-        text: {
+        content: {
           primary: "#e0e0e8",
           muted: "#8888a0",
           dim: "#55556a",
         },
-        green: "#7ec89f",
-        warm: "#f0c674",
-        red: "#e88",
+        status: {
+          green: "#7ec89f",
+          warm: "#f0c674",
+          red: "#e88",
+        },
       },
-      boxShadow: {
-        glow: "0 18px 42px rgba(83, 74, 183, 0.28)",
+      fontFamily: {
+        sans: ["var(--font-dm-sans)", "system-ui", "sans-serif"],
+        display: ["var(--font-fraunces)", "Georgia", "serif"],
+        mono: ["var(--font-dm-mono)", "monospace"],
       },
       borderRadius: {
-        "4xl": "2rem",
+        "2xl": "16px",
+        "3xl": "20px",
       },
     },
   },
+  plugins: [],
 };
 
 export default config;
