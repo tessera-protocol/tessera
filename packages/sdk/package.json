@@ -1,6 +1,6 @@
 {
-  "name": "tessera-sdk",
-  "version": "0.1.0",
+  "name": "@tessera-protocol/sdk",
+  "version": "0.1.0-alpha.1",
   "description": "SDK for issuing and verifying Tessera identity credentials",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -24,6 +24,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/tessera-protocol/tessera"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=22.5"
