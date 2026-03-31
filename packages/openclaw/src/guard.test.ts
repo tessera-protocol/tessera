@@ -11,15 +11,18 @@ function createIssuedCredential() {
     issuerPublicKeyPem: keys.publicKeyPem,
   });
 
-  return issuer.issue({
-    tier: 1,
-    jurisdiction: 'EU',
-    anchorHash: `guard-test-${Math.random()}`,
-  });
+  return {
+    issuerPublicKey: keys.publicKeyPem,
+    issued: issuer.issue({
+      tier: 1,
+      jurisdiction: 'EU',
+      anchorHash: `guard-test-${Math.random()}`,
+    }),
+  };
 }
 
 function createPayload(overrides?: Partial<SerializedAgentCredentialPayload>) {
-  const issued = createIssuedCredential();
+  const { issued, issuerPublicKey } = createIssuedCredential();
   const delegation = createDelegation(issued.holderSecretKey, issued.credential, {
     agentName: 'guard-test-agent',
     parentScope: {
@@ -41,7 +44,7 @@ function createPayload(overrides?: Partial<SerializedAgentCredentialPayload>) {
     expiresAt: Math.floor(Date.now() / 1000) + 3600,
   });
 
-  return {
+  const payload = {
     version: 'tessera.openclaw/v1' as const,
     credential: issued.credential,
     delegation: {
@@ -53,12 +56,19 @@ function createPayload(overrides?: Partial<SerializedAgentCredentialPayload>) {
     },
     ...overrides,
   };
+
+  return {
+    payload,
+    trustedIssuerKeys: [issuerPublicKey],
+  };
 }
 
 describe('guard checks', () => {
   it('allows actions within scope', async () => {
+    const { payload, trustedIssuerKeys } = createPayload();
     const guard = createGuard({
-      credential: serializeAgentCredential(createPayload()),
+      credential: serializeAgentCredential(payload),
+      trustedIssuerKeys,
       offlineMode: true,
     });
 
@@ -71,8 +81,10 @@ describe('guard checks', () => {
   });
 
   it('denies actions outside payment scope', async () => {
+    const { payload, trustedIssuerKeys } = createPayload();
     const guard = createGuard({
-      credential: serializeAgentCredential(createPayload()),
+      credential: serializeAgentCredential(payload),
+      trustedIssuerKeys,
       offlineMode: true,
     });
 
@@ -87,8 +99,10 @@ describe('guard checks', () => {
   });
 
   it('denies unknown actions', async () => {
+    const { payload, trustedIssuerKeys } = createPayload();
     const guard = createGuard({
-      credential: serializeAgentCredential(createPayload()),
+      credential: serializeAgentCredential(payload),
+      trustedIssuerKeys,
       offlineMode: true,
     });
 
@@ -99,11 +113,12 @@ describe('guard checks', () => {
   });
 
   it('denies expired credentials', async () => {
-    const payload = createPayload();
+    const { payload, trustedIssuerKeys } = createPayload();
     payload.delegation.expiresAt = Math.floor(Date.now() / 1000) - 60;
 
     const guard = createGuard({
       credential: serializeAgentCredential(payload),
+      trustedIssuerKeys,
       offlineMode: true,
     });
 
@@ -114,8 +129,10 @@ describe('guard checks', () => {
   });
 
   it('returns a legible agent message', () => {
+    const { payload, trustedIssuerKeys } = createPayload();
     const guard = createGuard({
-      credential: serializeAgentCredential(createPayload()),
+      credential: serializeAgentCredential(payload),
+      trustedIssuerKeys,
       offlineMode: true,
     });
 
@@ -124,5 +141,52 @@ describe('guard checks', () => {
     assert.match(message, /send messages/);
     assert.match(message, /make purchases up to £50/);
     assert.match(message, /cannot run shell commands/);
+  });
+
+  it('denies credentials signed by an untrusted issuer', async () => {
+    const { payload } = createPayload();
+    const guard = createGuard({
+      credential: serializeAgentCredential(payload),
+      trustedIssuerKeys: ['-----BEGIN PUBLIC KEY-----\nNOT-TRUSTED\n-----END PUBLIC KEY-----\n'],
+      offlineMode: true,
+    });
+
+    const result = await guard.check('email.send', { recipientCount: 1 });
+
+    assert.equal(result.allowed, false);
+    assert.match(result.reason ?? '', /untrusted issuer/);
+  });
+
+  it('fails closed for malformed credentials without crashing', async () => {
+    const guard = createGuard({
+      credential: 'definitely-not-a-valid-token',
+      trustedIssuerKeys: ['trusted-key'],
+      offlineMode: true,
+    });
+
+    const result = await guard.check('email.send', { recipientCount: 1 });
+
+    assert.equal(result.allowed, false);
+    assert.equal(result.reason, 'Invalid or corrupted credential');
+    assert.equal(result.suggestion, 'Ask the user to re-issue the Tessera credential');
+    assert.deepEqual(guard.getStatus(), {
+      credentialValid: false,
+      expiresIn: 'N/A',
+      scope: {},
+    });
+    assert.match(guard.getAgentMessage(), /invalid or corrupted/);
+  });
+
+  it('fails closed for empty credentials without crashing', async () => {
+    const guard = createGuard({
+      credential: '',
+      trustedIssuerKeys: ['trusted-key'],
+      offlineMode: true,
+    });
+
+    const result = await guard.check('payment.intent', { amount: 10 });
+
+    assert.equal(result.allowed, false);
+    assert.equal(result.reason, 'Invalid or corrupted credential');
   });
 });

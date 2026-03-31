@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { createGuard } from '@tessera-protocol/openclaw';
 import { createVerifier } from '@tessera-protocol/sdk';
 import type {
   AnchorTier,
@@ -29,6 +30,12 @@ interface IssueCredentialRequestBody {
 interface VerifyProofRequestBody {
   proof?: TesseraProof;
   platformId?: string;
+}
+
+interface GuardCheckRequestBody {
+  token?: string;
+  action?: string;
+  resource?: object;
 }
 
 export function createIssuerApp(options: CreateIssuerAppOptions) {
@@ -140,6 +147,39 @@ export function createIssuerApp(options: CreateIssuerAppOptions) {
     } finally {
       verifier.close();
     }
+  });
+
+  app.post('/guard/check', async (c) => {
+    const body = await c.req.json<GuardCheckRequestBody>();
+
+    if (!body.token || typeof body.token !== 'string') {
+      return c.json({
+        allowed: false,
+        reason: 'token is required',
+      }, 400);
+    }
+
+    if (!body.action || typeof body.action !== 'string') {
+      return c.json({
+        allowed: false,
+        reason: 'action is required',
+      }, 400);
+    }
+
+    const guard = createGuard({
+      credential: body.token,
+      trustedIssuerKeys: [state.getIssuerPublicKey()],
+      offlineMode: true,
+    });
+    const result = await guard.check(body.action, body.resource);
+
+    state.log('Guard check', {
+      action: body.action,
+      allowed: result.allowed,
+      reason: result.reason ?? null,
+    });
+
+    return c.json(result);
   });
 
   return { app, state };
