@@ -1,8 +1,9 @@
-import { agents } from "@/lib/mock-data";
 import { AgentDetailClient } from "./agent-detail-client";
 
+const agentIds = ["claude-code", "mcp-browser", "openclaw-v1"];
+
 export function generateStaticParams() {
-  return agents.map((agent) => ({ id: agent.id }));
+  return agentIds.map((id) => ({ id }));
 }
 
 export default async function AgentDetailPage({
