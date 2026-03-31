@@ -189,4 +189,23 @@ describe('guard checks', () => {
     assert.equal(result.allowed, false);
     assert.equal(result.reason, 'Invalid or corrupted credential');
   });
+
+  it('requires an explicit issuerUrl for online mode even if the token embeds one', () => {
+    const { payload, trustedIssuerKeys } = createPayload({
+      metadata: {
+        agentName: 'guard-test-agent',
+        issuerUrl: 'https://attacker.invalid',
+      } as SerializedAgentCredentialPayload['metadata'] & { issuerUrl: string },
+    });
+
+    assert.throws(
+      () =>
+        createGuard({
+          credential: serializeAgentCredential(payload),
+          trustedIssuerKeys,
+          offlineMode: false,
+        }),
+      /issuerUrl is required for online mode/,
+    );
+  });
 });

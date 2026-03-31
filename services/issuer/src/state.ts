@@ -19,13 +19,17 @@ interface GroupStateFile {
   anchorHashes: string[];
 }
 
+interface RevocationStateFile {
+  revokedDelegationIds: string[];
+}
+
 export interface IssueCredentialInput {
   commitment: string;
   anchorType: string;
   anchorHash: string;
   tier: AnchorTier;
   jurisdiction: Jurisdiction;
-  holderPublicKey?: string;
+  holderPublicKey: string;
 }
 
 export interface IssuedCredentialResponse {
@@ -48,6 +52,7 @@ export class IssuerServiceState {
   readonly dataDir: string;
   readonly keysPath: string;
   readonly groupPath: string;
+  readonly revocationsPath: string;
   readonly nullifierDbPath: string;
   readonly startedAt: number;
 
@@ -55,11 +60,13 @@ export class IssuerServiceState {
   private group: Group;
   private recentRoots: string[];
   private anchorHashes: Set<string>;
+  private revokedDelegations: Set<string>;
 
   constructor(options: IssuerServiceStateOptions) {
     this.dataDir = options.dataDir;
     this.keysPath = join(this.dataDir, 'issuer-keys.json');
     this.groupPath = join(this.dataDir, 'group.json');
+    this.revocationsPath = join(this.dataDir, 'revocations.json');
     this.nullifierDbPath = join(this.dataDir, 'nullifiers.db');
     this.startedAt = Date.now();
 
@@ -70,6 +77,7 @@ export class IssuerServiceState {
     this.group = groupState.group;
     this.recentRoots = groupState.recentRoots;
     this.anchorHashes = new Set(groupState.anchorHashes);
+    this.revokedDelegations = loadRevocationState(this.revocationsPath);
   }
 
   getIssuerPublicKey(): string {
@@ -113,7 +121,7 @@ export class IssuerServiceState {
     const issuedAt = Math.floor(Date.now() / 1000);
     const credentialBase = {
       identityCommitment: input.commitment,
-      holderPublicKey: input.holderPublicKey ?? this.issuerKeys.publicKeyPem,
+      holderPublicKey: input.holderPublicKey,
       issuerPublicKey: this.issuerKeys.publicKeyPem,
       anchor: {
         tier: input.tier,
@@ -143,6 +151,15 @@ export class IssuerServiceState {
     console.log(`[${timestamp}] ${message}${suffix}`);
   }
 
+  revokeDelegation(delegationId: string): void {
+    this.revokedDelegations.add(delegationId);
+    this.persistRevocationState();
+  }
+
+  isDelegationRevoked(delegationId: string): boolean {
+    return this.revokedDelegations.has(delegationId);
+  }
+
   private recordRoot(root: string): void {
     this.recentRoots.push(root);
     if (this.recentRoots.length > ROOT_HISTORY_LIMIT) {
@@ -158,6 +175,14 @@ export class IssuerServiceState {
     };
 
     writeFileSync(this.groupPath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+  }
+
+  private persistRevocationState(): void {
+    const state: RevocationStateFile = {
+      revokedDelegationIds: [...this.revokedDelegations],
+    };
+
+    writeFileSync(this.revocationsPath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
   }
 }
 
@@ -217,4 +242,18 @@ function loadGroupState(groupPath: string): {
     recentRoots: recentRoots.slice(-ROOT_HISTORY_LIMIT),
     anchorHashes: parsed.anchorHashes ?? [],
   };
+}
+
+function loadRevocationState(revocationsPath: string): Set<string> {
+  if (!existsSync(revocationsPath)) {
+    const initialState: RevocationStateFile = {
+      revokedDelegationIds: [],
+    };
+
+    writeFileSync(revocationsPath, `${JSON.stringify(initialState, null, 2)}\n`, 'utf8');
+    return new Set();
+  }
+
+  const parsed = JSON.parse(readFileSync(revocationsPath, 'utf8')) as RevocationStateFile;
+  return new Set(parsed.revokedDelegationIds ?? []);
 }

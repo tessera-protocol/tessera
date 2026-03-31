@@ -49,6 +49,13 @@ export function createGuard(config: GuardConfig): GuardInstance {
     throw new Error('trustedIssuerKeys is required — the guard must know which issuers to trust');
   }
 
+  const offlineMode = config.offlineMode ?? true;
+  if (!offlineMode && !config.issuerUrl) {
+    throw new Error(
+      'issuerUrl is required for online mode — the issuer endpoint must be configured out of band, never from the token',
+    );
+  }
+
   let parsed: SerializedAgentCredentialPayload | null = null;
   let degradedReason: string | null = null;
 
@@ -58,10 +65,9 @@ export function createGuard(config: GuardConfig): GuardInstance {
     degradedReason = INVALID_CREDENTIAL_REASON;
   }
 
-  const issuerUrl = config.issuerUrl ?? parsed?.metadata?.issuerUrl ?? 'http://localhost:3001';
   // Default to offline mode so the guard works out of the box; online mode adds
   // issuer-backed revocation checks and requires a running issuer service.
-  const offlineMode = config.offlineMode ?? true;
+  const issuerUrl = config.issuerUrl;
 
   return {
     async check(action: string, resource?: object): Promise<GuardResult> {
@@ -107,7 +113,7 @@ export function createGuard(config: GuardConfig): GuardInstance {
 
       if (!offlineMode) {
         const onlineResult = await verifyOnline({
-          issuerUrl,
+          issuerUrl: issuerUrl!,
           token: config.credential,
           action: classifiedAction,
           resource,

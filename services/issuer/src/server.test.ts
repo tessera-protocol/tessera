@@ -11,9 +11,10 @@ import { Group } from '@semaphore-protocol/group';
 import {
   createDelegation,
   createIssuer,
+  generateIssuerKeypair,
   prove,
 } from '@tessera-protocol/sdk';
-import { serializeAgentCredential } from '@tessera-protocol/openclaw';
+import { getDelegationId, serializeAgentCredential } from '@tessera-protocol/openclaw';
 import { createIssuerApp } from './app.js';
 
 const tempDirs: string[] = [];
@@ -30,15 +31,9 @@ test('issuer service issues credentials, returns roots, and verifies proofs', as
   const dataDir = mkdtempSync(join(tmpdir(), 'tessera-issuer-test-'));
   tempDirs.push(dataDir);
 
-  const { app, state } = createIssuerApp({ dataDir });
-  const server = serve({ fetch: app.fetch, port: 0 });
-  const address = server.address();
-  assert.notEqual(address, null);
-  if (address === null || typeof address === 'string') {
-    throw new Error('Failed to start test server');
-  }
-  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const { server, baseUrl, state } = startIssuerServer(dataDir);
   const identity = new Identity();
+  const holderKeys = generateIssuerKeypair();
 
   const issueResponse = await requestJson(baseUrl, '/credential/issue', {
     method: 'POST',
@@ -48,6 +43,7 @@ test('issuer service issues credentials, returns roots, and verifies proofs', as
       anchorHash: 'anchor-hash-123',
       tier: 1,
       jurisdiction: 'EU',
+      holderPublicKey: holderKeys.publicKeyPem,
     },
   });
 
@@ -160,19 +156,156 @@ test('issuer service issues credentials, returns roots, and verifies proofs', as
     });
     assert.equal(guardDenied.status, 200);
     assert.equal((guardDenied.json as { allowed: boolean }).allowed, false);
-  } finally {
-    await new Promise<void>((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
 
-        resolve();
-      });
+    const delegationId = getDelegationId(delegation);
+    const revokeResponse = await requestJson(baseUrl, '/delegation/revoke', {
+      method: 'POST',
+      body: {
+        delegationId,
+      },
     });
+    assert.equal(revokeResponse.status, 200);
+    assert.equal((revokeResponse.json as { revoked: boolean }).revoked, true);
+
+    const guardRevoked = await requestJson(baseUrl, '/guard/check', {
+      method: 'POST',
+      body: {
+        token,
+        action: 'email.send',
+        resource: {
+          recipientCount: 1,
+        },
+      },
+    });
+    assert.equal(guardRevoked.status, 200);
+    assert.equal((guardRevoked.json as { allowed: boolean }).allowed, false);
+    assert.match((guardRevoked.json as { reason?: string }).reason ?? '', /revoked/);
+  } finally {
+    await closeServer(server);
   }
 });
+
+test('revocation survives issuer restart', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'tessera-issuer-restart-test-'));
+  tempDirs.push(dataDir);
+
+  const first = startIssuerServer(dataDir);
+  const issuerKeys = JSON.parse(
+    readFileSync(join(dataDir, 'issuer-keys.json'), 'utf8'),
+  ) as {
+    privateKeyPem: string;
+    publicKeyPem: string;
+  };
+  const issuer = createIssuer({
+    issuerPrivateKeyPem: issuerKeys.privateKeyPem,
+    issuerPublicKeyPem: issuerKeys.publicKeyPem,
+  });
+  const issued = issuer.issue({
+    tier: 1,
+    jurisdiction: 'EU',
+    anchorHash: 'restart-guard-anchor',
+  });
+  const delegation = createDelegation(issued.holderSecretKey, issued.credential, {
+    agentName: 'restart-agent',
+    scope: {
+      canPost: true,
+      maxRecipients: 2,
+    },
+    expiresAt: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const token = serializeAgentCredential({
+    version: 'tessera.openclaw/v1',
+    credential: issued.credential,
+    delegation,
+  });
+  const delegationId = getDelegationId(delegation);
+
+  try {
+    const revokeResponse = await requestJson(first.baseUrl, '/delegation/revoke', {
+      method: 'POST',
+      body: {
+        delegationId,
+      },
+    });
+    assert.equal(revokeResponse.status, 200);
+  } finally {
+    await closeServer(first.server);
+  }
+
+  const second = startIssuerServer(dataDir);
+  try {
+    const guardRevoked = await requestJson(second.baseUrl, '/guard/check', {
+      method: 'POST',
+      body: {
+        token,
+        action: 'email.send',
+        resource: {
+          recipientCount: 1,
+        },
+      },
+    });
+    assert.equal(guardRevoked.status, 200);
+    assert.equal((guardRevoked.json as { allowed: boolean }).allowed, false);
+    assert.match((guardRevoked.json as { reason?: string }).reason ?? '', /revoked/);
+  } finally {
+    await closeServer(second.server);
+  }
+});
+
+test('credential issuance requires holderPublicKey', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'tessera-issuer-holder-key-test-'));
+  tempDirs.push(dataDir);
+
+  const { server, baseUrl } = startIssuerServer(dataDir);
+  const identity = new Identity();
+
+  try {
+    const issueResponse = await requestJson(baseUrl, '/credential/issue', {
+      method: 'POST',
+      body: {
+        commitment: identity.commitment.toString(),
+        anchorType: 'bank-account',
+        anchorHash: 'missing-holder-key',
+        tier: 1,
+        jurisdiction: 'EU',
+      },
+    });
+
+    assert.equal(issueResponse.status, 400);
+    assert.match((issueResponse.json as { error?: string }).error ?? '', /holderPublicKey is required/);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+function startIssuerServer(dataDir: string) {
+  const { app, state } = createIssuerApp({ dataDir });
+  const server = serve({ fetch: app.fetch, port: 0 });
+  const address = server.address();
+  assert.notEqual(address, null);
+  if (address === null || typeof address === 'string') {
+    throw new Error('Failed to start test server');
+  }
+
+  return {
+    server,
+    state,
+    baseUrl: `http://127.0.0.1:${address.port}`,
+  };
+}
+
+function closeServer(server: ReturnType<typeof serve>) {
+  return new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
 
 function requestJson(
   baseUrl: string,
