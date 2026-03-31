@@ -1,7 +1,10 @@
 "use client";
 
+import { AgentDetailSheet } from "@/components/agent-detail-sheet";
 import Link from "next/link";
 import { useTessera } from "@/lib/tessera-context";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 const statusStyles = {
   active: {
@@ -116,8 +119,12 @@ function AgentIcon({
   );
 }
 
-export default function AgentsPage() {
-  const { agents } = useTessera();
+function AgentsPageInner() {
+  const { activity, agents, revokeAgent } = useTessera();
+  const searchParams = useSearchParams();
+  const selectedAgentId = searchParams.get("agent");
+  const selectedAgent =
+    agents.find((agent) => agent.id === selectedAgentId) ?? null;
 
   return (
     <div className="py-4">
@@ -143,6 +150,14 @@ export default function AgentsPage() {
         </Link>
       </div>
 
+      {selectedAgentId ? (
+        <AgentDetailSheet
+          agent={selectedAgent}
+          activity={activity}
+          onRevoke={revokeAgent}
+        />
+      ) : null}
+
       {agents.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line bg-surface-raised p-6 text-center">
           <p className="text-sm font-medium text-content-primary">
@@ -166,7 +181,7 @@ export default function AgentsPage() {
         return (
           <Link
             key={agent.id}
-            href={`/agents/${agent.id}`}
+            href={`/agents?agent=${encodeURIComponent(agent.id)}`}
             className={`mb-3 block rounded-2xl border border-line bg-surface-raised p-5 transition-colors hover:border-content-dim ${isRevoked ? "opacity-50" : ""}`}
           >
             <div className="mb-3.5 flex items-start justify-between">
@@ -229,5 +244,13 @@ export default function AgentsPage() {
         );
       })}
     </div>
+  );
+}
+
+export default function AgentsPage() {
+  return (
+    <Suspense fallback={<div className="py-4 text-sm text-content-muted">Loading agents...</div>}>
+      <AgentsPageInner />
+    </Suspense>
   );
 }

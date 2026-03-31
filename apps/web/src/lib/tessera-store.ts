@@ -1,5 +1,20 @@
 "use client";
 
+/**
+ * ⚠️ SECURITY WARNING — DEMO ONLY
+ *
+ * This store uses localStorage for all state including private keys.
+ * localStorage is accessible to any script running on the same origin,
+ * making it vulnerable to XSS attacks and browser extension access.
+ *
+ * In production, private keys must be stored using:
+ * - Web Crypto API with non-extractable CryptoKey objects
+ * - Platform secure storage (Keychain on iOS, Keystore on Android)
+ * - A hardware security module via the issuer service
+ *
+ * This implementation is for development and demonstration only.
+ */
+
 export type TesseraCredentialRecord = {
   name: string;
   tier: number;
@@ -10,6 +25,7 @@ export type TesseraCredentialRecord = {
   issuerSignature: string;
   issuerPublicKey: string;
   holderPublicKey: string;
+  demo: boolean;
 };
 
 export type TesseraAgentScope = {

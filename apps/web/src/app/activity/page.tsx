@@ -43,6 +43,8 @@ export default function ActivityPage() {
                     ? "bg-status-green"
                     : event.type === "revocation"
                       ? "bg-status-red"
+                      : event.type === "proof-demo"
+                        ? "bg-status-warm"
                       : event.type === "agent"
                         ? "bg-brand-purple-light"
                         : "bg-status-warm"

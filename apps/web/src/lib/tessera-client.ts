@@ -24,6 +24,7 @@ import {
 export type TesseraProofResult = {
   platformScope: string;
   note?: string;
+  demo?: boolean;
   semaphoreProof: {
     merkleTreeDepth: number;
     merkleTreeRoot: string;
@@ -106,6 +107,10 @@ function buildDelegationPayload(agent: Omit<TesseraAgentRecord, "parentSignature
   };
 }
 
+/**
+ * @warning This creates a self-signed demo credential with no external trust anchor.
+ * In production, credentials must be issued by a trusted Tessera issuer service.
+ */
 export async function initializeCredential(
   name: string,
   tier: number,
@@ -147,6 +152,7 @@ export async function initializeCredential(
   const credential: TesseraCredentialRecord = {
     ...credentialPayload,
     issuerSignature,
+    demo: true,
   };
 
   setCredential(credential);
@@ -309,6 +315,7 @@ export async function generateProof(platformScope: string): Promise<TesseraProof
 
     return {
       platformScope,
+      demo: false,
       semaphoreProof: {
         merkleTreeDepth: semaphoreProof.merkleTreeDepth,
         merkleTreeRoot: semaphoreProof.merkleTreeRoot,
@@ -319,7 +326,7 @@ export async function generateProof(platformScope: string): Promise<TesseraProof
       },
     };
   } catch (error) {
-    console.error("Semaphore browser proof generation failed", error);
+    console.warn("Semaphore browser proof generation failed", error);
 
     const fallbackProof = {
       merkleTreeDepth: group.depth,
@@ -331,13 +338,14 @@ export async function generateProof(platformScope: string): Promise<TesseraProof
     };
 
     appendActivity({
-      text: "Identity verified",
+      text: "Proof unavailable - demo mode",
       platform: platformScope,
-      type: "verification",
+      type: "proof-demo",
     });
 
     return {
       platformScope,
+      demo: true,
       note: "Full Semaphore proof generation requires the CLI artifacts in this environment.",
       semaphoreProof: fallbackProof,
     };

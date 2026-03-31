@@ -1,4 +1,6 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Tessera Web App
+
+Client-side Next.js + Capacitor shell for the Tessera demo app.
 
 ## Getting Started
 
@@ -16,9 +18,25 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The app auto-initializes a demo credential in the browser on first load and persists state in `localStorage`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Security Notes
+
+⚠️ Demo only.
+
+This app stores all browser state in `localStorage`, including private keys used for demo credential issuance and agent delegation.
+
+That means the current implementation is vulnerable to:
+
+- any XSS running on the same origin
+- browser extensions with page access
+- local browser profile compromise
+
+In production, private keys must not live in `localStorage`. Use:
+
+- Web Crypto API with non-extractable `CryptoKey` objects
+- platform secure storage such as iOS Keychain or Android Keystore
+- issuer-managed signing or hardware-backed key custody where appropriate
 
 ## Learn More
 

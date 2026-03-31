@@ -125,9 +125,16 @@ export default function WalletPage() {
               tessera<span className="text-brand-purple-light">.</span>
             </span>
           </div>
-          <span className="rounded-full bg-status-green/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-status-green">
-            TIER {credential.tier}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-status-green/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-status-green">
+              TIER {credential.tier}
+            </span>
+            {credential.demo ? (
+              <span className="rounded-full bg-status-warm/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-status-warm">
+                DEMO
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <p className="mb-0.5 text-lg font-semibold text-white">
@@ -218,6 +225,8 @@ export default function WalletPage() {
                     ? "bg-status-green"
                     : entry.type === "agent"
                       ? "bg-brand-purple-light"
+                      : entry.type === "proof-demo"
+                        ? "bg-status-warm"
                       : entry.type === "revocation"
                         ? "bg-status-red"
                         : "bg-status-warm"

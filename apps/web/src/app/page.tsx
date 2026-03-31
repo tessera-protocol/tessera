@@ -158,6 +158,17 @@ export default function PassportPage() {
 
   return (
     <div className="py-4">
+      {credential.demo ? (
+        <div className="mb-4 rounded-2xl border border-status-warm/20 bg-status-warm/10 p-4">
+          <p className="text-sm font-semibold text-status-warm">
+            Demo mode - self-issued credential
+          </p>
+          <p className="mt-1 text-xs text-status-warm">
+            Connect to a Tessera issuer to get a real credential
+          </p>
+        </div>
+      ) : null}
+
       <div className="mb-4 rounded-3xl border border-line bg-surface-raised p-7">
         <div className="mb-6 flex items-center justify-between">
           <TesseraMark size={44} variant="twotone" />
@@ -208,7 +219,7 @@ export default function PassportPage() {
         onClick={async () => {
           const proof = await generateProof("demo-platform");
           setProofSummary({
-            title: proof.note ? "Proof fallback ready" : "Semaphore proof ready",
+            title: proof.demo ? "Proof ready (demo)" : "Semaphore proof ready",
             detail: truncate(proof.semaphoreProof.nullifier, 24),
           });
         }}
