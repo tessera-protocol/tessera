@@ -4,6 +4,11 @@
   "description": "SDK for issuing and verifying Tessera identity credentials",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "npx tsx --test src/**/*.test.ts",

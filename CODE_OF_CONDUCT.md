@@ -30,7 +30,7 @@ Examples of unacceptable behavior:
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the project maintainer at hello@tessera-protocol.dev. All complaints
+reported through GitHub Discussions at https://github.com/tessera-protocol/tessera/discussions. All complaints
 will be reviewed and investigated promptly and fairly.
 
 ## Attribution
