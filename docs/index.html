@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tessera — A Protocol for Human and Agent Identity</title>
+  <meta name="description" content="An open protocol for anchoring digital identity to real-world financial verification, issuing portable cryptographic credentials to humans and their AI agents.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700&family=DM+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg-raised: #12121a;
+      --bg-card: #16161f;
+      --border: #2a2a3a;
+      --text: #e0e0e8;
+      --text-muted: #8888a0;
+      --text-dim: #55556a;
+      --accent: #6e8efb;
+      --accent-dim: rgba(110, 142, 251, 0.12);
+      --warm: #f0c674;
+      --green: #7ec89f;
+      --red: #e88;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      overflow-x: hidden;
+    }
+
+    /* ── Ambient background ── */
+    .bg-glow {
+      position: fixed;
+      top: -40vh;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 120vw;
+      height: 80vh;
+      background: radial-gradient(ellipse at center, rgba(110, 142, 251, 0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 740px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    section {
+      padding: 80px 0;
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 16px 24px;
+      backdrop-filter: blur(20px);
+      background: rgba(10, 10, 15, 0.8);
+      border-bottom: 1px solid var(--border);
+    }
+
+    nav .inner {
+      max-width: 740px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-family: 'Fraunces', serif;
+      font-weight: 600;
+      font-size: 20px;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .logo span {
+      color: var(--accent);
+    }
+
+    nav a.nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+      margin-left: 28px;
+    }
+
+    nav a.nav-link:hover {
+      color: var(--text);
+    }
+
+    /* ── Hero ── */
+    .hero {
+      padding-top: 180px;
+      padding-bottom: 60px;
+      text-align: center;
+    }
+
+    .hero-badge {
+      display: inline-block;
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      color: var(--accent);
+      background: var(--accent-dim);
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(110, 142, 251, 0.2);
+      margin-bottom: 32px;
+      letter-spacing: 0.05em;
+    }
+
+    h1 {
+      font-family: 'Fraunces', serif;
+      font-weight: 600;
+      font-size: clamp(36px, 6vw, 56px);
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+      margin-bottom: 24px;
+      color: #fff;
+    }
+
+    h1 .gradient {
+      background: linear-gradient(135deg, var(--accent), var(--warm));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 540px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+      border: none;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #5a7cf0;
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--text-muted);
+      transform: translateY(-1px);
+    }
+
+    /* ── Epigraph ── */
+    .epigraph {
+      text-align: center;
+      padding: 0 0 60px;
+    }
+
+    .epigraph p {
+      font-family: 'Fraunces', serif;
+      font-style: italic;
+      font-weight: 300;
+      font-size: 16px;
+      color: var(--text-dim);
+      max-width: 480px;
+      margin: 0 auto;
+      line-height: 1.8;
+    }
+
+    /* ── Section headings ── */
+    h2 {
+      font-family: 'Fraunces', serif;
+      font-weight: 600;
+      font-size: 28px;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+      color: #fff;
+    }
+
+    .section-sub {
+      color: var(--text-muted);
+      font-size: 16px;
+      margin-bottom: 48px;
+      max-width: 560px;
+    }
+
+    /* ── Problem cards ── */
+    .problem-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .problem-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      transition: border-color 0.2s;
+    }
+
+    .problem-card:hover {
+      border-color: var(--text-dim);
+    }
+
+    .problem-card h3 {
+      font-family: 'Fraunces', serif;
+      font-weight: 600;
+      font-size: 17px;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .problem-card p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.65;
+    }
+
+    .problem-num {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      color: var(--accent);
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    /* ── Layer stack ── */
+    .layer-stack {
+      display: grid;
+      gap: 2px;
+    }
+
+    .layer {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 24px 28px;
+      display: grid;
+      grid-template-columns: 60px 1fr;
+      gap: 20px;
+      align-items: start;
+      transition: border-color 0.2s;
+    }
+
+    .layer:first-child { border-radius: 12px 12px 0 0; }
+    .layer:last-child { border-radius: 0 0 12px 12px; }
+    .layer:hover { border-color: var(--text-dim); }
+
+    .layer-num {
+      font-family: 'DM Mono', monospace;
+      font-size: 32px;
+      font-weight: 500;
+      color: var(--accent);
+      line-height: 1;
+      padding-top: 4px;
+    }
+
+    .layer h3 {
+      font-family: 'Fraunces', serif;
+      font-weight: 600;
+      font-size: 17px;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .layer p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.65;
+    }
+
+    /* ── Comparison table ── */
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin-top: 12px;
+    }
+
+    .comparison-table th {
+      text-align: left;
+      padding: 12px 16px;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .comparison-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(42, 42, 58, 0.5);
+      color: var(--text-muted);
+    }
+
+    .comparison-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .comparison-table tr.highlight td {
+      color: var(--text);
+      background: var(--accent-dim);
+    }
+
+    .comparison-table tr.highlight td:first-child {
+      font-weight: 600;
+      color: var(--accent);
+      border-radius: 8px 0 0 8px;
+    }
+
+    .comparison-table tr.highlight td:last-child {
+      border-radius: 0 8px 8px 0;
+    }
+
+    .check { color: var(--green); }
+    .cross { color: var(--red); opacity: 0.6; }
+    .partial { color: var(--warm); }
+
+    /* ── Code preview ── */
+    .code-block {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 32px 0;
+      overflow-x: auto;
+    }
+
+    .code-block pre {
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text-muted);
+    }
+
+    .code-block .kw { color: var(--accent); }
+    .code-block .str { color: var(--green); }
+    .code-block .cm { color: var(--text-dim); }
+    .code-block .fn { color: var(--warm); }
+
+    .code-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    /* ── CTA ── */
+    .cta-section {
+      text-align: center;
+      padding: 100px 0 120px;
+    }
+
+    .cta-section h2 {
+      margin-bottom: 12px;
+    }
+
+    .cta-section p {
+      color: var(--text-muted);
+      font-size: 16px;
+      margin-bottom: 36px;
+    }
+
+    .cta-links {
+      display: flex;
+      gap: 32px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 48px;
+    }
+
+    .cta-links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+
+    .cta-links a:hover { color: var(--text); }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+      text-align: center;
+    }
+
+    footer p {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      section { padding: 60px 0; }
+      .hero { padding-top: 140px; }
+      .layer { grid-template-columns: 1fr; gap: 8px; }
+      .layer-num { font-size: 20px; }
+      nav .nav-links { display: none; }
+    }
+
+    /* ── Animations ── */
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .hero-badge, h1, .hero-sub, .hero-actions {
+      animation: fade-up 0.6s ease-out both;
+    }
+
+    .hero-badge { animation-delay: 0.1s; }
+    h1 { animation-delay: 0.2s; }
+    .hero-sub { animation-delay: 0.3s; }
+    .hero-actions { animation-delay: 0.4s; }
+  </style>
+</head>
+<body>
+
+<div class="bg-glow"></div>
+
+<nav>
+  <div class="inner">
+    <a href="#" class="logo">tessera<span>.</span></a>
+    <div class="nav-links">
+      <a href="#problem" class="nav-link">Problem</a>
+      <a href="#architecture" class="nav-link">Architecture</a>
+      <a href="#compare" class="nav-link">Compare</a>
+      <a href="https://github.com/tessera-protocol/tessera" class="nav-link">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+
+  <!-- Hero -->
+  <section class="hero">
+    <span class="hero-badge">WORKING DRAFT v0.1 &middot; PRE-ALPHA</span>
+    <h1>Identity for humans<br>and their <span class="gradient">agents</span></h1>
+    <p class="hero-sub">
+      An open protocol for anchoring digital identity to real-world financial verification &mdash; without exposing personal data.
+    </p>
+    <div class="hero-actions">
+      <a href="https://github.com/tessera-protocol/tessera" class="btn btn-primary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        View on GitHub
+      </a>
+      <a href="https://github.com/tessera-protocol/tessera/blob/main/spec/v0.1/tessera-spec.md" class="btn btn-secondary">
+        Read the Spec
+      </a>
+    </div>
+  </section>
+
+  <!-- Epigraph -->
+  <div class="epigraph">
+    <p>The Roman tessera hospitalis was a clay tile broken between two strangers. Each carried a half; reuniting the pieces proved identity and established trust across distance.</p>
+  </div>
+
+  <!-- Problem -->
+  <section id="problem">
+    <h2>The problem</h2>
+    <p class="section-sub">
+      The internet has no native way to verify that a user is a real, unique human &mdash; or that an AI agent is authorised to act on someone's behalf.
+    </p>
+    <div class="problem-grid">
+      <div class="problem-card">
+        <span class="problem-num">01</span>
+        <h3>Fake identity costs nothing</h3>
+        <p>A single actor can create thousands of identities at zero cost. CAPTCHAs and phone verification test capability, not identity. Sybil attacks remain trivially cheap.</p>
+      </div>
+      <div class="problem-card">
+        <span class="problem-num">02</span>
+        <h3>Agents can't prove who sent them</h3>
+        <p>AI agents browse, transact, and communicate autonomously &mdash; but have no standard way to prove a human authorised them, what they're permitted to do, or when that permission expires.</p>
+      </div>
+      <div class="problem-card">
+        <span class="problem-num">03</span>
+        <h3>Credentials don't travel</h3>
+        <p>Identity verification is siloed. Verified on one platform? Start over on the next. There's no portable proof of personhood that preserves privacy.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section id="architecture">
+    <h2>Four layers</h2>
+    <p class="section-sub">
+      Each layer is independently useful and composable into the full protocol.
+    </p>
+    <div class="layer-stack">
+      <div class="layer">
+        <div class="layer-num">01</div>
+        <div>
+          <h3>Anchor</h3>
+          <p>Root of trust via open banking KYC. Verifies a real human exists via their bank account, with fallback tiers: card verification, mobile carrier, social vouching. No data stored after issuance.</p>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="layer-num">02</div>
+        <div>
+          <h3>Credential</h3>
+          <p>A W3C Verifiable Credential proving "verified unique human" &mdash; with zero-knowledge proofs. No name, email, or PII included. Stored on your device, not our servers.</p>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="layer-num">03</div>
+        <div>
+          <h3>Delegation</h3>
+          <p>Humans delegate scoped, time-limited, revocable credentials to their AI agents. Agents can sub-delegate within their own scope. Revoking a parent invalidates all children.</p>
+        </div>
+      </div>
+      <div class="layer">
+        <div class="layer-num">04</div>
+        <div>
+          <h3>Verification</h3>
+          <p>Open-source SDK for platforms. Verify a credential in under 200ms: check ZK proof, nullifier registry, revocation status. Returns type, tier, and scope.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Code preview -->
+    <div class="code-block">
+      <span class="code-label">// platform integration</span>
+<pre><span class="kw">import</span> { <span class="fn">createVerifier</span> } <span class="kw">from</span> <span class="str">'tessera-sdk'</span>;
+
+<span class="kw">const</span> verifier = <span class="fn">createVerifier</span>({
+  nullifierRegistryUrl: <span class="str">'https://registry.tessera.example'</span>,
+  minimumTier: <span class="str">2</span>,
+});
+
+<span class="kw">const</span> result = <span class="kw">await</span> verifier.<span class="fn">verify</span>(credential);
+<span class="cm">// { valid: true, type: 'human', tier: 1, scope: null }</span></pre>
+    </div>
+  </section>
+
+  <!-- Comparison -->
+  <section id="compare">
+    <h2>How it compares</h2>
+    <p class="section-sub">
+      The differentiator is the combination: high Sybil resistance, no biometrics, no crypto, native agent support, open standard.
+    </p>
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>System</th>
+          <th>Sybil Resistance</th>
+          <th>Biometric-free</th>
+          <th>Agent Support</th>
+          <th>Open</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Email / phone</td>
+          <td><span class="cross">Low</span></td>
+          <td><span class="check">&check;</span></td>
+          <td><span class="cross">&times;</span></td>
+          <td><span class="partial">&sim;</span></td>
+        </tr>
+        <tr>
+          <td>Google / Apple SSO</td>
+          <td><span class="partial">Medium</span></td>
+          <td><span class="check">&check;</span></td>
+          <td><span class="cross">&times;</span></td>
+          <td><span class="cross">&times;</span></td>
+        </tr>
+        <tr>
+          <td>Worldcoin</td>
+          <td><span class="check">High</span></td>
+          <td><span class="cross">&times;</span></td>
+          <td><span class="cross">&times;</span></td>
+          <td><span class="partial">&sim;</span></td>
+        </tr>
+        <tr>
+          <td>Gitcoin Passport</td>
+          <td><span class="partial">Medium</span></td>
+          <td><span class="check">&check;</span></td>
+          <td><span class="cross">&times;</span></td>
+          <td><span class="check">&check;</span></td>
+        </tr>
+        <tr class="highlight">
+          <td>Tessera</td>
+          <td><span class="check">High</span></td>
+          <td><span class="check">&check;</span></td>
+          <td><span class="check">Native</span></td>
+          <td><span class="check">&check;</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <h2>Get involved</h2>
+    <p>Tessera is in its earliest stage. We're looking for collaborators.</p>
+    <div class="hero-actions">
+      <a href="https://github.com/tessera-protocol/tessera" class="btn btn-primary">
+        Explore the repo
+      </a>
+      <a href="https://github.com/tessera-protocol/tessera/blob/main/CONTRIBUTING.md" class="btn btn-secondary">
+        Contributing guide
+      </a>
+    </div>
+    <div class="cta-links">
+      <a href="https://github.com/tessera-protocol/tessera/blob/main/spec/v0.1/tessera-spec.md">Protocol Spec</a>
+      <a href="https://github.com/tessera-protocol/tessera/discussions">Discussions</a>
+      <a href="https://github.com/tessera-protocol/tessera/issues">Issues</a>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <div class="container">
+    <p>Tessera Protocol &middot; <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> &middot; Built by <a href="https://github.com/gullirg">Guglielmo Reggio</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
