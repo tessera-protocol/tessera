@@ -63,7 +63,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 \renewcommand{\headrulewidth}{0pt}
-\fancyfoot[C]{\small\color{gray} Tessera Protocol --- Working Draft v0.2 --- March 2026 \hfill \thepage}
+\fancyfoot[C]{\small\color{gray} Tessera Protocol --- Working Draft v0.3 --- March 2026 \hfill \thepage}
 
 \setlist[itemize]{topsep=0.3em, itemsep=0.15em, parsep=0pt}
 \setlist[enumerate]{topsep=0.3em, itemsep=0.15em, parsep=0pt}
@@ -80,7 +80,7 @@
 \begin{center}
   {\Huge\bfseries TESSERA}\\[0.8em]
   {\Large Identity for Humans and Their Agents}\\[2.5em]
-  {\large Working Draft v0.2}\\[1.2em]
+  {\large Working Draft v0.3}\\[1.2em]
   {\large Guglielmo Reggio}\\[0.6em]
   {\normalsize March 2026}\\[4em]
   \rule{8cm}{0.4pt}\\[1.5em]
@@ -166,6 +166,7 @@ Human provenance & Creators can sign their work with a zero-knowledge proof of h
 Progressive trust & Multiple verification layers stack to increase credential strength. Higher tiers unlock more capabilities. \\
 Accessibility & No cryptocurrency, no hardware tokens, no biometric devices. Any person with a smartphone can participate. \\
 Open standard & The protocol is open, auditable, and not controlled by any single entity. \\
+Economic sustainability & Revenue from verification fees and agent transaction stamps funds a human dividend, aligning incentives without a cryptocurrency token. \\
 \bottomrule
 \end{tabularx}
 \caption{Tessera design goals.}
@@ -372,7 +373,59 @@ These verticals are complementary: the agent vertical proves ``this agent is aut
 
 
 % ═══════════════════════════════════════
-% 7. COMPARISON
+% 7. ECONOMIC MODEL
+% ═══════════════════════════════════════
+\section{Economic Model}
+
+Tessera sustains itself through a three-layer economic model that aligns incentives between platforms, agent operators, and verified humans. Critically, Tessera does not issue a cryptocurrency token. All value flows in fiat currency through standard payment processors.
+
+\subsection{Platform Verification Fees}
+
+Platforms that integrate the Tessera verification API pay a per-verification fee. This is the core revenue mechanism, analogous to Stripe charging per transaction or Twilio charging per SMS. Platforms pay because the alternative---building proprietary Sybil resistance, KYC infrastructure, and agent verification---costs orders of magnitude more.
+
+Pricing is volume-tiered, starting at approximately \pounds 0.01--0.05 per verification. The open-source SDK remains free; the fee applies only to the hosted verification service (nullifier registry, issuer signature validation, and group root management).
+
+\subsection{Agent Transaction Stamps}
+
+Every scoped agent action---a purchase, a post, a message sent on behalf of a human---can optionally require a \textbf{transaction stamp}. The stamp is a micropayment (typically \pounds 0.001--0.01) paid by the agent's human owner and recorded alongside the verification result.
+
+Transaction stamps serve two purposes. First, they create economic friction that makes automated abuse expensive. A bot army performing 10{,}000 actions costs \pounds 10--100 in stamps---trivial for a legitimate user performing a few actions per day, but prohibitive for a spammer. This is economically equivalent to the Hashcash proof-of-work concept applied at the identity layer rather than the network layer.
+
+Second, stamps generate revenue that scales with agent activity rather than user count. As agents become more capable and perform more actions, the stamp revenue grows proportionally, creating a natural alignment between protocol utility and protocol sustainability.
+
+Stamps are optional. Platforms choose whether to require them and can set their own thresholds. The protocol defines the stamp mechanism; platforms define the policy.
+
+\subsection{Why the Model Compounds}
+
+The three layers reinforce each other. Verification fees monetise trust at the platform edge. Transaction stamps monetise action inside agent workflows. The human dividend turns verification from a pure cost centre into a shared upside mechanism. This creates a flywheel: more useful agents increase platform demand for verification; more platform demand increases protocol revenue; more revenue increases the dividend; a larger dividend increases the incentive for real humans to verify and remain active in the ecosystem.
+
+This is structurally different from advertising-driven social networks, where users create value but rarely participate directly in the upside. It is also different from token-governed identity systems, where economic value is mediated through speculative assets. Tessera instead treats identity as infrastructure and distributes a share of infrastructure revenue back to the humans whose verified uniqueness makes the system possible.
+
+\subsection{Human Dividend}
+
+A fixed percentage of gross revenue from verification fees and transaction stamps is redistributed to verified humans. This is the \textbf{human dividend}---a direct fiat payment to every Tier~1 verified user, distributed monthly.
+
+The mechanism is simple: 30\% of gross protocol revenue enters the dividend pool. The pool is divided equally among all Tier~1 verified credential holders at the end of each distribution period. The per-user amount is small at early scale and grows with adoption.
+
+The human dividend differs from token-based redistribution (as in Worldcoin) in three important ways:
+
+\begin{enumerate}
+  \item There is no speculative token. The dividend is denominated in fiat currency and paid through standard payment rails.
+  \item The amount is deterministic and transparent. Users can calculate their expected dividend from publicly reported revenue figures.
+  \item The dividend grows with real economic activity (agent transactions, platform verifications), not with speculative market dynamics.
+\end{enumerate}
+
+This model creates a direct incentive for verification: every verified human earns a share of the value generated by the agent economy they are enabling. The more useful agents become, the more verified humans earn.
+
+\subsection{Tessera Does Not Touch Money}
+
+Tessera is identity infrastructure, not financial infrastructure. Spending limits on agent delegations are permissions, not balances. When an agent credential specifies \texttt{maxTransactionValue: 50 EUR}, the platform receiving the credential enforces the limit through its own payment system. Tessera verifies who is authorised and what they are authorised to do. The platform handles how money moves.
+
+This design avoids payment institution regulation (FCA in the UK, PSD2 in the EU). Verification fees and stamp payments are processed through standard payment processors (Stripe). The human dividend is distributed as revenue sharing, not as stored value.
+
+
+% ═══════════════════════════════════════
+% 8. COMPARISON
 % ═══════════════════════════════════════
 \section{Comparison with Existing Approaches}
 
@@ -401,7 +454,7 @@ Relative to Worldcoin specifically, Tessera differs in three fundamental ways: i
 
 
 % ═══════════════════════════════════════
-% 8. PRIVACY
+% 9. PRIVACY
 % ═══════════════════════════════════════
 \section{Privacy Guarantees}
 
@@ -414,6 +467,7 @@ Relative to Worldcoin specifically, Tessera differs in three fundamental ways: i
 \midrule
 Verifying platform & Credential is valid, anchor tier, credential age, agent scope (if agent) & User's name, bank, email, or any PII \\
 Tessera issuer & Anchor hash at issuance (discarded after), nullifier at re-verification & What platforms the user verifies with \\
+Tessera issuer (recovery) & SHA-256 hashes of optional recovery contacts; encrypted backup blob & Plaintext email, phone number, or backup contents \\
 Content consumers & That a verified human signed the content & Who the creator is, or whether two works share a creator \\
 Other users & Nothing---credentials are not publicly visible & --- \\
 Governments & Nothing without legal process directed at the user's bank & --- \\
@@ -424,9 +478,50 @@ Governments & Nothing without legal process directed at the user's bank & --- \\
 
 Tessera's privacy model is strictly stronger than existing verification systems (phone verification, social login, document KYC), all of which expose significant PII to verifying parties. The content provenance system adds a new privacy guarantee: creators can prove human authorship without revealing their identity, and multiple works by the same creator cannot be linked.
 
+Users who provide recovery contacts accept a limited reduction in anonymity: the issuer can route a verification code to the correct email address when recovery is initiated, but cannot read the email address from the stored hash. This is an opt-in convenience feature, not a protocol requirement.
+
 
 % ═══════════════════════════════════════
-% 9. THREAT MODEL
+% 10. AUTHENTICATION AND RECOVERY
+% ═══════════════════════════════════════
+\section{Authentication and Recovery}
+
+\subsection{Credential-as-Authentication}
+
+Tessera has no login system, no accounts, no usernames, and no passwords. The credential itself is the authentication. Possession of a valid Tessera credential, protected by device-level biometrics (FaceID, TouchID, or equivalent), is sufficient to prove identity to any platform.
+
+This model eliminates an entire class of attacks---phishing, credential stuffing, password reuse---because there are no credentials to steal in the traditional sense. The Semaphore identity secret is stored in the device's secure enclave and never transmitted. Verification is performed via zero-knowledge proof, which proves possession of the secret without revealing it.
+
+\subsection{Device Security}
+
+The app is protected by device-level biometric authentication on every open. This is a local check performed by the operating system (iOS Keychain, Android Keystore) and does not involve Tessera's servers. The biometric data never leaves the device and is not part of the Tessera protocol.
+
+In practice, this means Tessera inherits the security posture of the device platform rather than attempting to replace it. Apple and Google already operate mature secure storage and biometric gating primitives; Tessera uses those primitives as the user-facing access control layer, while keeping the protocol itself focused on cryptographic proof and delegated authority.
+
+\subsection{Recovery}
+
+Loss of a device means loss of the credential, which must be recoverable without compromising privacy. Tessera supports optional recovery contacts: the user may provide an email address and/or phone number during onboarding.
+
+These contacts are hashed locally (SHA-256) before transmission. The issuer stores only the hashes alongside an encrypted backup blob (the credential and identity secret, encrypted with a key derived from the Semaphore identity). The issuer cannot read the email, cannot read the phone number, and cannot decrypt the backup.
+
+Recovery proceeds as follows:
+
+\begin{enumerate}
+  \item User enters their recovery email on a new device.
+  \item The app hashes it locally and sends the hash to the issuer.
+  \item The issuer matches the hash and sends a verification code to the email.
+  \item The user enters the code, receiving the encrypted backup.
+  \item The user re-verifies with their bank (TrueLayer) to prove they are the same person.
+  \item The issuer re-issues the credential with a new identity commitment linked to the original anchor.
+\end{enumerate}
+
+Recovery contacts are optional. Users who decline accept the risk that device loss requires full re-verification. This is an explicit privacy-convenience tradeoff that the user controls.
+
+This recovery model preserves the core protocol invariant: recovery should restore access, not create a second copy of the credential. Re-issuance invalidates the lost device's credential path and replaces it with a new identity commitment bound to the same verified anchor, preventing recovery from becoming a duplication vector for Sybil attacks.
+
+
+% ═══════════════════════════════════════
+% 11. THREAT MODEL
 % ═══════════════════════════════════════
 \section{Threat Model}
 
@@ -454,7 +549,7 @@ Tessera does not claim to prevent all misuse by verified humans. A real person c
 
 
 % ═══════════════════════════════════════
-% 10. OPEN QUESTIONS
+% 12. OPEN QUESTIONS
 % ═══════════════════════════════════════
 \section{Open Questions}
 
@@ -478,7 +573,7 @@ Agent credential standards & No existing standard for agent authorisation creden
 
 
 % ═══════════════════════════════════════
-% 11. ROADMAP
+% 13. ROADMAP
 % ═══════════════════════════════════════
 \section{Roadmap}
 
@@ -489,8 +584,8 @@ Agent credential standards & No existing standard for agent authorisation creden
 \toprule
 \textbf{Phase} & \textbf{Scope} \\
 \midrule
-Phase 0---Spec (current) & Publish whitepaper. Open-source protocol implementation with Semaphore ZK layer, Ed25519 signatures, and SQLite nullifier registry. Community feedback. \\
-Phase 1---App MVP & Tessera App (web + iOS via Capacitor). Passport screen with progressive verification. Agent wallet creation and export. Verification network with invite flow. Stripe Identity for Tier~2 anchor. npm publish of \texttt{tessera-sdk}. \\
+Phase 0---Foundation (complete) & Protocol specification. Working SDK with Semaphore ZK proofs, Ed25519 signatures, and SQLite nullifier registry. Published as \texttt{@tessera-protocol/sdk} on npm. CLI demo. Credential wallet app (web + iOS via Capacitor). 16-page whitepaper. Brand identity and landing page. \\
+Phase 1---Infrastructure (in progress) & Issuer service (Hono backend). TrueLayer open banking sandbox integration. Bank KYC anchor for Tier~1 credentials. Micropayment infrastructure via Stripe. Agent transaction stamps. App onboarding flow with recovery contacts. \\
 Phase 2---Ecosystem & Agent verification integrations (MCP servers, OpenClaw, Claude Code). Human provenance watermark SDK. First ecosystem partner integrations. Apple Wallet pass. \\
 Phase 3---Scale & TrueLayer open banking for Tier~1. Full W3C VC compliance. Content watermark standard proposal. Security audit. Android app. \\
 Phase 4---Institutional & UK DIATF certification exploration. Nullifier registry decentralisation. Foundation-style governance. Real-world identity acceptance. \\
@@ -501,7 +596,7 @@ Phase 4---Institutional & UK DIATF certification exploration. Nullifier registry
 
 
 % ═══════════════════════════════════════
-% 12. OPEN SOURCE AND GOVERNANCE
+% 14. OPEN SOURCE AND GOVERNANCE
 % ═══════════════════════════════════════
 \section{Open Source and Governance}
 
@@ -509,7 +604,7 @@ Tessera is committed to an open core model. The following components are release
 
 \begin{itemize}
   \item The Tessera credential schema and protocol specification
-  \item The verification SDK (\texttt{tessera-sdk})
+  \item The verification SDK (\texttt{@tessera-protocol/sdk})
   \item The ZK proof library (built on Semaphore)
   \item The watermark generation and verification library
   \item Reference implementations of agent delegation
@@ -528,7 +623,7 @@ Protocol governance in Phase~1 rests with the founding team. An advisory board o
 
 
 % ═══════════════════════════════════════
-% 13. GET INVOLVED
+% 15. GET INVOLVED
 % ═══════════════════════════════════════
 \section{Get Involved}
 
@@ -546,6 +641,7 @@ Tessera is in its earliest stage. We are actively seeking:
   GitHub: \url{https://github.com/tessera-protocol/tessera}
 \end{center}
 
+\clearpage
 
 % ═══════════════════════════════════════
 % REFERENCES
@@ -599,7 +695,7 @@ Tessera is in its earliest stage. We are actively seeking:
 \vfill
 \begin{center}
   \small\color{gray}
-  Tessera Protocol Working Draft v0.2 --- March 2026 --- Licensed under CC BY 4.0
+  Tessera Protocol Working Draft v0.3 --- March 2026 --- Licensed under CC BY 4.0
 \end{center}
 
 \end{document}
