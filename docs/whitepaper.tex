@@ -63,7 +63,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 \renewcommand{\headrulewidth}{0pt}
-\fancyfoot[C]{\small\color{gray} Tessera Protocol --- Working Draft v0.3 --- March 2026 \hfill \thepage}
+\fancyfoot[C]{\small\color{gray} Tessera Protocol --- Working Draft v0.4 --- March 2026 \hfill \thepage}
 
 \setlist[itemize]{topsep=0.3em, itemsep=0.15em, parsep=0pt}
 \setlist[enumerate]{topsep=0.3em, itemsep=0.15em, parsep=0pt}
@@ -80,7 +80,7 @@
 \begin{center}
   {\Huge\bfseries TESSERA}\\[0.8em]
   {\Large Identity for Humans and Their Agents}\\[2.5em]
-  {\large Working Draft v0.3}\\[1.2em]
+  {\large Working Draft v0.4}\\[1.2em]
   {\large Guglielmo Reggio}\\[0.6em]
   {\normalsize March 2026}\\[4em]
   \rule{8cm}{0.4pt}\\[1.5em]
@@ -101,11 +101,13 @@
 % ABSTRACT
 % ═══════════════════════════════════════
 \begin{abstract}
-\noindent Tessera is an open protocol and consumer platform for digital identity. It anchors identity to real-world financial verification, issues portable cryptographic credentials backed by zero-knowledge proofs, and provides the first identity and wallet system for autonomous AI agents.
+\noindent Tessera is an open protocol that makes AI agent actions contingent on human-delegated, cryptographically verified permission. It is the permission layer for autonomous agents: before an agent can send an email, execute a transaction, post content, or run a command, it must present a valid Tessera credential proving that a real human authorised it, what it is permitted to do, and when that permission expires.
 
-The internet faces three converging crises. Social platforms cannot distinguish humans from bots. AI agents cannot prove who authorised them. And AI-generated content is flooding every medium---text, image, audio, video---with no reliable way to verify human authorship. Tessera addresses all three with a single primitive: a privacy-preserving credential rooted in existing bank KYC, with a delegation model for agents and a provenance system for human-created content.
+The protocol anchors identity to real-world financial verification (bank KYC via open banking), issues W3C Verifiable Credentials backed by Semaphore zero-knowledge proofs, and extends trust from humans to agents through scoped, time-limited, revocable delegations signed with Ed25519.
 
-Tessera is not a cryptocurrency, does not require biometric scanning, and does not store personal data. It is an open standard built on W3C Verifiable Credentials and Semaphore zero-knowledge proofs, delivered through a consumer app that makes identity portable across the digital and physical worlds.
+As AI agents proliferate---browsing, transacting, communicating, and making decisions autonomously---the internet faces three converging crises. Platforms cannot distinguish humans from bots. Agents cannot prove who authorised them or what they are permitted to do. And AI-generated content is flooding every medium with no reliable way to verify human authorship. Tessera addresses all three with a single primitive: a privacy-preserving credential that blocks unauthorised action by default.
+
+Tessera is not a cryptocurrency, does not require biometric scanning, and does not store personal data. It is an open standard delivered through a consumer app, an open-source SDK, and agent framework integrations that make permission the default, not the exception.
 \end{abstract}
 
 
@@ -369,7 +371,71 @@ The initial ecosystem targets two verticals:
 
 \textbf{Human provenance services.} Content platforms, creative marketplaces, streaming services, and publishers integrate Tessera Watermarks to distinguish human-created content from AI-generated material.
 
+\textbf{Agent framework integrations.} The initial integration target is OpenClaw, the open-source agent framework with over 300,000 users and 13,000+ community-built skills. OpenClaw agents already emit approval events for sensitive actions; Tessera Guard replaces the ``ask the human every time'' pattern with pre-delegated, revocable authority. Subsequent integrations target Claude Code, MCP-compatible tools, and LangChain-based agent systems.
+
 These verticals are complementary: the agent vertical proves ``this agent is authorised by a real human,'' while the provenance vertical proves ``this content was created by a real human.'' Both stem from the same underlying credential.
+
+\subsection{The Guard Pattern}
+
+The primary integration model for agent frameworks is the \textbf{Tessera Guard}---a middleware layer that intercepts sensitive agent actions and blocks them unless a valid Tessera credential authorises the operation.
+
+The guard pattern inverts the default. Instead of agents acting freely unless stopped, agents cannot act unless explicitly permitted. This transforms Tessera from an optional verification service into a required permission layer.
+
+\subsubsection*{How it works}
+
+The guard sits between the agent runtime and its tools. When the agent invokes a sensitive action (sending email, executing a payment, running a shell command, posting content), the guard intercepts the call and evaluates it against the bound Tessera credential:
+
+\begin{lstlisting}
+function onToolInvocation(action, context) {
+  if (!isSensitive(action)) return allow();
+
+  const credential = context.agent.tesseraCredential;
+  const result = tessera.verify(credential, {
+    action: action.type,
+    resource: action.estimate
+  });
+
+  if (!result.valid) return deny("No valid credential");
+  if (!result.scope_ok) return deny("Outside delegated scope");
+  return allow();
+}
+\end{lstlisting}
+
+The verification call checks credential validity, issuer signature, scope containment, expiry, and revocation status. If any check fails, the action is blocked and the agent receives a structured explanation of why---enabling it to communicate the limitation to the user within the conversation.
+
+\subsubsection*{Protected action classes}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Action class} & \textbf{Risk} \\
+\midrule
+\texttt{message.send} & Agent sends messages (email, chat, SMS) on behalf of the human. Risk: impersonation, spam, social engineering. \\
+\texttt{payment.intent} & Agent initiates purchases or transfers. Risk: unauthorised spending, financial fraud. \\
+\texttt{exec.shell} & Agent executes system commands. Risk: data exfiltration, system compromise, privilege escalation. \\
+\texttt{content.publish} & Agent posts content publicly. Risk: reputational damage, misinformation, legal liability. \\
+\bottomrule
+\end{tabularx}
+\caption{Protected action classes in the Tessera Guard.}
+\end{table}
+
+\subsubsection*{Agent-side legibility}
+
+When the guard denies an action, the agent receives a structured response that it can interpret and communicate naturally. Rather than failing silently, the agent can tell the user:
+
+\begin{quote}
+``I'm not authorised to send emails to more than 20 recipients. My current Tessera credential limits bulk messaging. You can issue a broader credential from the Tessera app if you'd like me to proceed.''
+\end{quote}
+
+This makes the permission system legible inside the agent conversation itself, turning security enforcement into a natural part of the agent interaction rather than an opaque error.
+
+\subsubsection*{Instant revocation}
+
+If a human revokes an agent's Tessera credential (via the app, with a single tap), the next sensitive action the agent attempts will fail immediately. The guard queries the issuer's revocation status on every verification call. There is no propagation delay---revocation is effective within one verification round-trip (typically under 200\,ms).
+
+This provides a ``kill switch'' for agent behaviour that works across all platforms and tools simultaneously, without requiring the human to individually disconnect the agent from each service.
 
 
 % ═══════════════════════════════════════
@@ -584,11 +650,12 @@ Agent credential standards & No existing standard for agent authorisation creden
 \toprule
 \textbf{Phase} & \textbf{Scope} \\
 \midrule
-Phase 0---Foundation (complete) & Protocol specification. Working SDK with Semaphore ZK proofs, Ed25519 signatures, and SQLite nullifier registry. Published as \texttt{@tessera-protocol/sdk} on npm. CLI demo. Credential wallet app (web + iOS via Capacitor). 16-page whitepaper. Brand identity and landing page. \\
-Phase 1---Infrastructure (in progress) & Issuer service (Hono backend). TrueLayer open banking sandbox integration. Bank KYC anchor for Tier~1 credentials. Micropayment infrastructure via Stripe. Agent transaction stamps. App onboarding flow with recovery contacts. \\
-Phase 2---Ecosystem & Agent verification integrations (MCP servers, OpenClaw, Claude Code). Human provenance watermark SDK. First ecosystem partner integrations. Apple Wallet pass. \\
-Phase 3---Scale & TrueLayer open banking for Tier~1. Full W3C VC compliance. Content watermark standard proposal. Security audit. Android app. \\
-Phase 4---Institutional & UK DIATF certification exploration. Nullifier registry decentralisation. Foundation-style governance. Real-world identity acceptance. \\
+Phase 0---Foundation (complete) & Protocol specification and reference implementation. SDK with Semaphore ZK proofs, Ed25519 signatures, and SQLite nullifier registry. Published as \texttt{@tessera-protocol/sdk} on npm. Credential wallet app (web + iOS). CLI demo. Issuer service. 20-page whitepaper. \\
+Phase 1---OpenClaw integration & Tessera Guard middleware for OpenClaw. Permission enforcement on email, payments, shell, and content actions. Agent-side permission legibility. Revocation integration. First real users from the OpenClaw community. \\
+Phase 2---Bank anchor & TrueLayer open banking sandbox integration for Tier~1 credentials. App onboarding flow with recovery contacts. Real bank-verified credentials replacing demo mode. \\
+Phase 3---Ecosystem expansion & MCP server for Claude Code and Claude Desktop. Tessera-signed skill manifests for OpenClaw. Micropayment infrastructure (agent transaction stamps). Human dividend tracking. \\
+Phase 4---Scale & Full W3C VC compliance. Content watermark SDK. Apple Wallet pass. Multi-issuer support. Enterprise tier. Security audit. \\
+Phase 5---Institutional & UK DIATF certification exploration. Nullifier registry decentralisation. Foundation-style governance. \\
 \bottomrule
 \end{tabularx}
 \caption{Implementation roadmap.}
@@ -695,7 +762,7 @@ Tessera is in its earliest stage. We are actively seeking:
 \vfill
 \begin{center}
   \small\color{gray}
-  Tessera Protocol Working Draft v0.3 --- March 2026 --- Licensed under CC BY 4.0
+  Tessera Protocol Working Draft v0.4 --- March 2026 --- Licensed under CC BY 4.0
 \end{center}
 
 \end{document}
