@@ -1,34 +1,68 @@
 /**
  * Tessera SDK
  *
- * An open-source SDK for verifying Tessera identity credentials.
- * Use `createVerifier()` to get started.
+ * An open-source SDK for issuing and verifying Tessera identity credentials.
+ * Built on Semaphore for the zero-knowledge layer.
  *
  * @example
  * ```typescript
- * import { createVerifier } from 'tessera-sdk';
- *
- * const verifier = createVerifier({
- *   nullifierRegistryUrl: 'https://registry.tessera.example',
+ * // === Issuer side (your server) ===
+ * import { createIssuer } from 'tessera-sdk';
+ * const issuer = createIssuer();
+ * const { credential, identitySecret } = issuer.issue({
+ *   tier: 1,
+ *   jurisdiction: 'EU',
+ *   anchorHash: 'sha256-of-bank-account-id',
  * });
  *
- * const result = await verifier.verify(credential);
+ * // === User side (proving) ===
+ * import { prove } from 'tessera-sdk';
+ * const proof = await prove(
+ *   identitySecret,
+ *   group,
+ *   credential,
+ *   'platform-xyz',
+ * );
+ *
+ * // === Platform side (verifying) ===
+ * import { createVerifier } from 'tessera-sdk';
+ * const verifier = createVerifier({
+ *   platformScope: 'platform-xyz',
+ *   minimumTier: 2,
+ * });
+ * const result = await verifier.verify(proof);
  * // { valid: true, type: 'human', tier: 1, scope: null }
  * ```
  *
  * @packageDocumentation
  */
 
-export { createVerifier } from './verify.js';
+// Issuer (credential creation)
+export { createIssuer } from './issuer.js';
 
+// Prover (user-side proof generation)
+export { prove } from './prover.js';
+
+// Verifier (platform-side verification)
+export { createVerifier } from './verifier.js';
+
+// Types
 export type {
-  TesseraHumanCredential,
-  TesseraAgentCredential,
-  TesseraCredential,
-  TesseraConfig,
-  VerificationResult,
-  AgentScope,
+  // Anchor
   AnchorTier,
-  HumanCredentialClaims,
+  AnchorMetadata,
   Jurisdiction,
+  // Credentials
+  TesseraCredential,
+  // Agent delegation
+  AgentScope,
+  AgentDelegation,
+  // Proofs
+  TesseraProof,
+  SemaphoreProofData,
+  // Verification
+  VerificationResult,
+  TesseraVerifierConfig,
+  // Issuer
+  TesseraIssuerConfig,
 } from './types.js';
