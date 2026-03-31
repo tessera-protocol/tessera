@@ -43,6 +43,9 @@ export { createIssuer } from './issuer.js';
 // Prover (user-side proof generation)
 export { prove } from './prover.js';
 
+// Delegation (agent authorization)
+export { createDelegation } from './delegation.js';
+
 // Verifier (platform-side verification)
 export { createVerifier } from './verifier.js';
 

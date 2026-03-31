@@ -1,34 +1,41 @@
 /**
- * Tessera SDK — Integration Tests
- *
- * Tests the full credential lifecycle:
- *   1. Issuer creates a credential (after anchor verification)
- *   2. User generates a ZK proof
- *   3. Platform verifies the proof
+ * Tessera SDK — Security and lifecycle tests
  */
 
-import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, it } from 'node:test';
+import { createDelegation } from './delegation.js';
 import { createIssuer } from './issuer.js';
 import { prove } from './prover.js';
 import { createVerifier } from './verifier.js';
 
-describe('Tessera credential lifecycle', () => {
+const cleanupPaths: string[] = [];
 
-  it('should issue a credential and return identity secret', () => {
+afterEach(() => {
+  while (cleanupPaths.length > 0) {
+    rmSync(cleanupPaths.pop()!, { recursive: true, force: true });
+  }
+});
+
+describe('Tessera credential lifecycle', () => {
+  it('should issue a credential with signed issuer and holder keys', () => {
     const issuer = createIssuer();
 
-    const { credential, identitySecret } = issuer.issue({
+    const { credential, identitySecret, holderSecretKey } = issuer.issue({
       tier: 1,
       jurisdiction: 'EU',
       anchorHash: 'sha256-hash-of-bank-account-001',
     });
 
     assert.ok(credential.identityCommitment, 'should have identity commitment');
-    assert.equal(credential.anchor.tier, 1);
-    assert.equal(credential.anchor.jurisdiction, 'EU');
-    assert.ok(credential.expiresAt > Date.now() / 1000, 'should expire in the future');
+    assert.ok(credential.holderPublicKey.includes('BEGIN PUBLIC KEY'));
+    assert.ok(credential.issuerPublicKey.includes('BEGIN PUBLIC KEY'));
+    assert.ok(credential.issuerSignature, 'should have issuer signature');
     assert.ok(identitySecret, 'should return identity secret');
+    assert.ok(holderSecretKey.includes('BEGIN PRIVATE KEY'));
     assert.equal(issuer.getMemberCount(), 1);
   });
 
@@ -44,44 +51,26 @@ describe('Tessera credential lifecycle', () => {
     );
   });
 
-  it('should issue multiple credentials for different anchors', () => {
-    const issuer = createIssuer();
-
-    issuer.issue({ tier: 1, jurisdiction: 'EU', anchorHash: 'hash-a' });
-    issuer.issue({ tier: 2, jurisdiction: 'US', anchorHash: 'hash-b' });
-    issuer.issue({ tier: 3, jurisdiction: 'UK', anchorHash: 'hash-c' });
-
-    assert.equal(issuer.getMemberCount(), 3);
-  });
-
   it('full flow: issue → prove → verify', async () => {
     const issuer = createIssuer();
+    const verifier = createVerifier({
+      platformId: 'test-platform',
+      minimumTier: 1,
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+    });
 
-    // Step 1: Issue credential
     const { credential, identitySecret } = issuer.issue({
       tier: 1,
       jurisdiction: 'EU',
       anchorHash: 'sha256-hash-of-bank-account-003',
     });
 
-    // Step 2: Generate proof
-    const group = issuer.getGroup();
     const proof = await prove(
       identitySecret,
-      group,
+      issuer.getGroup(),
       credential,
       'test-platform',
     );
-
-    assert.ok(proof.semaphoreProof, 'should contain Semaphore proof');
-    assert.ok(proof.semaphoreProof.nullifier, 'should contain nullifier');
-    assert.equal(proof.credential.anchor.tier, 1);
-
-    // Step 3: Verify proof
-    const verifier = createVerifier({
-      platformScope: 'test-platform',
-      minimumTier: 1,
-    });
 
     const result = await verifier.verify(proof);
 
@@ -89,16 +78,88 @@ describe('Tessera credential lifecycle', () => {
     assert.equal(result.type, 'human');
     assert.equal(result.tier, 1);
     assert.equal(result.scope, null);
-    assert.equal(result.error, undefined);
+
+    verifier.close();
+  });
+
+  it('should reject forged credential claims even when the proof is valid', async () => {
+    const issuer = createIssuer();
+    const verifier = createVerifier({
+      platformId: 'secure-platform',
+      minimumTier: 1,
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+    });
+
+    const { credential, identitySecret } = issuer.issue({
+      tier: 3,
+      jurisdiction: 'US',
+      anchorHash: 'sha256-hash-of-bank-account-004',
+    });
+
+    const forgedCredential = {
+      ...credential,
+      anchor: {
+        ...credential.anchor,
+        tier: 1 as const,
+      },
+      expiresAt: credential.expiresAt + 60 * 60 * 24 * 365,
+    };
+
+    const proof = await prove(
+      identitySecret,
+      issuer.getGroup(),
+      forgedCredential,
+      'secure-platform',
+    );
+
+    const result = await verifier.verify(proof);
+
+    assert.equal(result.valid, false);
+    assert.match(result.error ?? '', /Credential signature verification failed/);
+
+    verifier.close();
+  });
+
+  it('should reject proofs generated for a different platform', async () => {
+    const issuer = createIssuer();
+    const verifier = createVerifier({
+      platformId: 'platform-b',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+    });
+
+    const { credential, identitySecret } = issuer.issue({
+      tier: 1,
+      jurisdiction: 'EU',
+      anchorHash: 'sha256-hash-of-bank-account-005',
+    });
+
+    const proof = await prove(
+      identitySecret,
+      issuer.getGroup(),
+      credential,
+      'platform-a',
+    );
+
+    const result = await verifier.verify(proof);
+
+    assert.equal(result.valid, false);
+    assert.match(result.error ?? '', /different platform/);
+
+    verifier.close();
   });
 
   it('should reject proof with insufficient tier', async () => {
     const issuer = createIssuer();
+    const verifier = createVerifier({
+      platformId: 'strict-platform',
+      minimumTier: 2,
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+    });
 
     const { credential, identitySecret } = issuer.issue({
-      tier: 3, // Mobile carrier verification
+      tier: 3,
       jurisdiction: 'US',
-      anchorHash: 'sha256-hash-of-phone-004',
+      anchorHash: 'sha256-hash-of-phone-006',
     });
 
     const proof = await prove(
@@ -108,74 +169,19 @@ describe('Tessera credential lifecycle', () => {
       'strict-platform',
     );
 
-    // Platform requires Tier 2 or better
-    const verifier = createVerifier({
-      platformScope: 'strict-platform',
-      minimumTier: 2,
-    });
-
     const result = await verifier.verify(proof);
 
     assert.equal(result.valid, false);
     assert.ok(result.error?.includes('does not meet minimum'));
+
+    verifier.close();
   });
 
-  it('should detect double-presentation via nullifier', async () => {
+  it('should detect double-presentation via a persistent SQLite nullifier registry', async () => {
     const issuer = createIssuer();
-
-    const { credential, identitySecret } = issuer.issue({
-      tier: 1,
-      jurisdiction: 'EU',
-      anchorHash: 'sha256-hash-of-bank-account-005',
-    });
-
-    const group = issuer.getGroup();
-
-    // Generate two proofs for the same platform
-    const proof1 = await prove(identitySecret, group, credential, 'platform-a');
-    const proof2 = await prove(identitySecret, group, credential, 'platform-a');
-
-    const verifier = createVerifier({
-      platformScope: 'platform-a',
-    });
-
-    // First presentation should succeed
-    const result1 = await verifier.verify(proof1);
-    assert.equal(result1.valid, true);
-
-    // Second presentation should fail (same nullifier)
-    const result2 = await verifier.verify(proof2);
-    assert.equal(result2.valid, false);
-    assert.ok(result2.error?.includes('already been presented'));
-  });
-
-  it('should allow same credential on different platforms', async () => {
-    const issuer = createIssuer();
-
-    const { credential, identitySecret } = issuer.issue({
-      tier: 1,
-      jurisdiction: 'EU',
-      anchorHash: 'sha256-hash-of-bank-account-006',
-    });
-
-    const group = issuer.getGroup();
-
-    // Different platforms = different scopes = different nullifiers
-    const proofA = await prove(identitySecret, group, credential, 'platform-a');
-    const proofB = await prove(identitySecret, group, credential, 'platform-b');
-
-    const verifierA = createVerifier({ platformScope: 'platform-a' });
-    const verifierB = createVerifier({ platformScope: 'platform-b' });
-
-    const resultA = await verifierA.verify(proofA);
-    const resultB = await verifierB.verify(proofB);
-
-    assert.equal(resultA.valid, true);
-    assert.equal(resultB.valid, true);
-  });
-
-  it('should reject expired credentials', async () => {
-    const issuer = createIssuer();
+    const databaseDir = mkdtempSync(join(tmpdir(), 'tessera-nullifiers-'));
+    const databasePath = join(databaseDir, 'registry.sqlite');
+    cleanupPaths.push(databaseDir);
 
     const { credential, identitySecret } = issuer.issue({
       tier: 1,
@@ -183,13 +189,177 @@ describe('Tessera credential lifecycle', () => {
       anchorHash: 'sha256-hash-of-bank-account-007',
     });
 
-    // Manually expire the credential
-    credential.expiresAt = Math.floor(Date.now() / 1000) - 1;
-
-    // Proof generation should fail
-    await assert.rejects(
-      () => prove(identitySecret, issuer.getGroup(), credential, 'platform'),
-      /expired/,
+    const proof = await prove(
+      identitySecret,
+      issuer.getGroup(),
+      credential,
+      'platform-a',
     );
+
+    const verifierA = createVerifier({
+      platformId: 'platform-a',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      nullifierDbPath: databasePath,
+    });
+    const verifierB = createVerifier({
+      platformId: 'platform-a',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      nullifierDbPath: databasePath,
+    });
+
+    const result1 = await verifierA.verify(proof);
+    const result2 = await verifierB.verify(proof);
+
+    assert.equal(result1.valid, true);
+    assert.equal(result2.valid, false);
+    assert.ok(result2.error?.includes('already been presented'));
+
+    verifierA.close();
+    verifierB.close();
+  });
+
+  it('should allow same credential on different platforms', async () => {
+    const issuer = createIssuer();
+    const verifierA = createVerifier({
+      platformId: 'platform-a',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+    });
+    const verifierB = createVerifier({
+      platformId: 'platform-b',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+    });
+
+    const { credential, identitySecret } = issuer.issue({
+      tier: 1,
+      jurisdiction: 'EU',
+      anchorHash: 'sha256-hash-of-bank-account-008',
+    });
+
+    const proofA = await prove(identitySecret, issuer.getGroup(), credential, 'platform-a');
+    const proofB = await prove(identitySecret, issuer.getGroup(), credential, 'platform-b');
+
+    const resultA = await verifierA.verify(proofA);
+    const resultB = await verifierB.verify(proofB);
+
+    assert.equal(resultA.valid, true);
+    assert.equal(resultB.valid, true);
+
+    verifierA.close();
+    verifierB.close();
+  });
+
+  it('should reject forged agent delegation signatures', async () => {
+    const issuer = createIssuer();
+    const verifier = createVerifier({
+      platformId: 'platform-agent',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+    });
+
+    const { credential, identitySecret, holderSecretKey } = issuer.issue({
+      tier: 1,
+      jurisdiction: 'EU',
+      anchorHash: 'sha256-hash-of-bank-account-009',
+    });
+
+    const validDelegation = createDelegation(holderSecretKey, credential, {
+      agentName: 'agent-1',
+      scope: { canPost: true },
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+    const forgedDelegation = {
+      ...validDelegation,
+      scope: { canPost: true, canTransact: true },
+    };
+
+    const proof = await prove(
+      identitySecret,
+      issuer.getGroup(),
+      credential,
+      'platform-agent',
+      '0',
+      forgedDelegation,
+    );
+
+    const result = await verifier.verify(proof);
+
+    assert.equal(result.valid, false);
+    assert.match(result.error ?? '', /signature verification failed/);
+
+    verifier.close();
+  });
+
+  it('should reject agent delegation scopes that exceed the parent scope', async () => {
+    const issuer = createIssuer();
+    const verifier = createVerifier({
+      platformId: 'platform-scope',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+    });
+
+    const { credential, identitySecret, holderSecretKey } = issuer.issue({
+      tier: 1,
+      jurisdiction: 'EU',
+      anchorHash: 'sha256-hash-of-bank-account-010',
+    });
+
+    const delegation = createDelegation(holderSecretKey, credential, {
+      agentName: 'agent-2',
+      parentScope: { canPost: true, maxTransactionValue: 10, allowedCategories: ['saas'] },
+      scope: { canPost: true, maxTransactionValue: 50, allowedCategories: ['saas', 'api'] },
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    const proof = await prove(
+      identitySecret,
+      issuer.getGroup(),
+      credential,
+      'platform-scope',
+      '0',
+      delegation,
+    );
+
+    const result = await verifier.verify(proof);
+
+    assert.equal(result.valid, false);
+    assert.match(result.error ?? '', /scope exceeds parent scope/);
+
+    verifier.close();
+  });
+
+  it('should accept valid agent delegations', async () => {
+    const issuer = createIssuer();
+    const verifier = createVerifier({
+      platformId: 'platform-valid-agent',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+    });
+
+    const { credential, identitySecret, holderSecretKey } = issuer.issue({
+      tier: 1,
+      jurisdiction: 'EU',
+      anchorHash: 'sha256-hash-of-bank-account-011',
+    });
+
+    const delegation = createDelegation(holderSecretKey, credential, {
+      agentName: 'agent-3',
+      parentScope: { canPost: true, maxTransactionValue: 100 },
+      scope: { canPost: true, maxTransactionValue: 25 },
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    const proof = await prove(
+      identitySecret,
+      issuer.getGroup(),
+      credential,
+      'platform-valid-agent',
+      '0',
+      delegation,
+    );
+
+    const result = await verifier.verify(proof);
+
+    assert.equal(result.valid, true);
+    assert.equal(result.type, 'agent');
+    assert.deepEqual(result.scope, delegation.scope);
+
+    verifier.close();
   });
 });

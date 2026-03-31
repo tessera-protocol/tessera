@@ -41,6 +41,10 @@ export interface AnchorMetadata {
 export interface TesseraCredential {
   /** Semaphore identity commitment (public, used as group member ID). */
   identityCommitment: string;
+  /** Ed25519 public key used by the credential holder for delegation signatures. */
+  holderPublicKey: string;
+  /** Ed25519 public key of the issuing authority. */
+  issuerPublicKey: string;
   /** Anchor verification metadata. */
   anchor: AnchorMetadata;
   /** When this credential expires (Unix timestamp). */
@@ -76,6 +80,8 @@ export interface AgentDelegation {
   parentCommitment: string;
   /** Human-readable agent name. */
   agentName: string;
+  /** Optional parent scope for bounded sub-delegation flows. */
+  parentScope?: AgentScope | null;
   /** What this agent is allowed to do. */
   scope: AgentScope;
   /** When this delegation was created (Unix timestamp). */
@@ -97,6 +103,8 @@ export interface TesseraProof {
   semaphoreProof: SemaphoreProofData;
   /** The credential metadata (tier, jurisdiction, expiry). */
   credential: TesseraCredential;
+  /** Platform identifier this proof was generated for. */
+  platformId: string;
   /** If this is an agent, the delegation token. */
   delegation?: AgentDelegation;
 }
@@ -136,14 +144,20 @@ export interface VerificationResult {
 export interface TesseraVerifierConfig {
   /** Minimum anchor tier this platform accepts (default: 1). */
   minimumTier?: AnchorTier;
-  /** The platform's scope identifier (used as Semaphore scope for nullifiers). */
-  platformScope: string;
+  /** The platform identifier (used as Semaphore scope for nullifiers). */
+  platformId: string;
+  /** Trusted issuer public keys in PEM format. */
+  trustedIssuerPublicKeys: string[];
+  /** SQLite file path for nullifier persistence. Defaults to in-memory. */
+  nullifierDbPath?: string;
 }
 
 /**
  * Configuration for the Tessera issuer.
  */
 export interface TesseraIssuerConfig {
-  /** The Semaphore group depth (Merkle tree depth). Default: 20. */
-  groupDepth?: number;
+  /** Optional PEM-encoded Ed25519 private key for deterministic issuer identity. */
+  issuerPrivateKeyPem?: string;
+  /** Optional PEM-encoded Ed25519 public key paired with issuerPrivateKeyPem. */
+  issuerPublicKeyPem?: string;
 }

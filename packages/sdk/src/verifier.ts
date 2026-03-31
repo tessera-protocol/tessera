@@ -18,7 +18,16 @@ import type {
   TesseraVerifierConfig,
   VerificationResult,
   AnchorTier,
+  AgentDelegation,
+  AgentScope,
 } from './types.js';
+import {
+  isScopeContained,
+  normalizeSemaphoreScope,
+  verifyCredentialSignature,
+  verifyDelegationSignature,
+} from './crypto.js';
+import { createNullifierRegistry } from './nullifier-registry.js';
 
 /**
  * Create a Tessera verifier for a platform.
@@ -40,7 +49,7 @@ import type {
  */
 export function createVerifier(config: TesseraVerifierConfig) {
   const minimumTier: AnchorTier = config.minimumTier ?? 1;
-  const seenNullifiers = new Set<string>();
+  const nullifierRegistry = createNullifierRegistry(config.nullifierDbPath);
 
   return {
     /**
@@ -58,7 +67,37 @@ export function createVerifier(config: TesseraVerifierConfig) {
       const resultType = isAgent ? 'agent' as const : 'human' as const;
       const tier = proof.credential.anchor.tier;
 
-      // Step 1: Check credential expiry
+      // Step 1: Verify the issuer signature before trusting any credential claims.
+      if (
+        !verifyCredentialSignature(
+          proof.credential,
+          config.trustedIssuerPublicKeys,
+        )
+      ) {
+        return {
+          valid: false,
+          type: resultType,
+          tier,
+          scope: proof.delegation?.scope ?? null,
+          error: 'Credential signature verification failed',
+        };
+      }
+
+      // Step 2: Bind the proof to this platform.
+      if (
+        proof.platformId !== config.platformId ||
+        proof.semaphoreProof.scope !== normalizeSemaphoreScope(config.platformId)
+      ) {
+        return {
+          valid: false,
+          type: resultType,
+          tier,
+          scope: proof.delegation?.scope ?? null,
+          error: 'Proof was generated for a different platform',
+        };
+      }
+
+      // Step 3: Check credential expiry
       const now = Math.floor(Date.now() / 1000);
       if (now > proof.credential.expiresAt) {
         return {
@@ -70,7 +109,7 @@ export function createVerifier(config: TesseraVerifierConfig) {
         };
       }
 
-      // Step 2: Enforce minimum anchor tier
+      // Step 4: Enforce minimum anchor tier
       // Tier 1 is strongest, Tier 4 is weakest
       // A platform requiring Tier 2 will accept Tier 1 and 2, but reject 3 and 4
       if (tier > minimumTier) {
@@ -83,7 +122,7 @@ export function createVerifier(config: TesseraVerifierConfig) {
         };
       }
 
-      // Step 3: Verify the Semaphore ZK proof
+      // Step 5: Verify the Semaphore ZK proof
       try {
         const proofValid = await verifyProof(proof.semaphoreProof);
         if (!proofValid) {
@@ -105,24 +144,14 @@ export function createVerifier(config: TesseraVerifierConfig) {
         };
       }
 
-      // Step 4: Check nullifier (double-presentation detection)
-      const nullifier = proof.semaphoreProof.nullifier;
-      if (seenNullifiers.has(nullifier)) {
-        return {
-          valid: false,
-          type: resultType,
-          tier,
-          scope: proof.delegation?.scope ?? null,
-          error: 'This credential has already been presented on this platform',
-        };
-      }
-
-      // Record the nullifier
-      seenNullifiers.add(nullifier);
-
-      // Step 5: Validate agent delegation (if applicable)
+      // Step 6: Validate agent delegation (if applicable)
       if (isAgent && proof.delegation) {
-        const delegationError = validateDelegation(proof.delegation, now);
+        const delegationError = validateDelegation(
+          proof.delegation,
+          proof.credential.holderPublicKey,
+          proof.credential.identityCommitment,
+          now,
+        );
         if (delegationError) {
           return {
             valid: false,
@@ -132,6 +161,18 @@ export function createVerifier(config: TesseraVerifierConfig) {
             error: delegationError,
           };
         }
+      }
+
+      // Step 7: Check nullifier (double-presentation detection)
+      const nullifier = proof.semaphoreProof.nullifier;
+      if (!nullifierRegistry.record(config.platformId, nullifier)) {
+        return {
+          valid: false,
+          type: resultType,
+          tier,
+          scope: proof.delegation?.scope ?? null,
+          error: 'This credential has already been presented on this platform',
+        };
       }
 
       // All checks passed
@@ -148,14 +189,21 @@ export function createVerifier(config: TesseraVerifierConfig) {
      * (useful for checking without consuming the nullifier).
      */
     hasSeenNullifier(nullifier: string): boolean {
-      return seenNullifiers.has(nullifier);
+      return nullifierRegistry.has(config.platformId, nullifier);
     },
 
     /**
      * Get the count of unique verified users on this platform.
      */
     getVerifiedCount(): number {
-      return seenNullifiers.size;
+      return nullifierRegistry.count(config.platformId);
+    },
+
+    /**
+     * Close the underlying SQLite connection.
+     */
+    close(): void {
+      nullifierRegistry.close();
     },
   };
 }
@@ -165,7 +213,9 @@ export function createVerifier(config: TesseraVerifierConfig) {
  * Returns null if valid, or an error message.
  */
 function validateDelegation(
-  delegation: import('./types.js').AgentDelegation,
+  delegation: AgentDelegation,
+  holderPublicKey: string,
+  credentialIdentityCommitment: string,
   now: number,
 ): string | null {
   if (now > delegation.expiresAt) {
@@ -180,11 +230,20 @@ function validateDelegation(
     return 'Agent delegation missing scope';
   }
 
-  // TODO: Verify parentSignature cryptographically
-  // This requires the parent's public key, which should be
-  // derivable from their identity commitment
+  if (delegation.parentCommitment !== credentialIdentityCommitment) {
+    return 'Agent delegation parent commitment does not match credential';
+  }
+
   if (!delegation.parentSignature) {
     return 'Agent delegation missing parent signature';
+  }
+
+  if (!verifyDelegationSignature(delegation, holderPublicKey)) {
+    return 'Agent delegation signature verification failed';
+  }
+
+  if (!isScopeContained(delegation.scope, delegation.parentScope)) {
+    return 'Agent delegation scope exceeds parent scope';
   }
 
   return null;

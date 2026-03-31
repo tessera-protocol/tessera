@@ -49,7 +49,7 @@ export async function prove(
   identitySecret: string,
   group: Group,
   credential: TesseraCredential,
-  platformScope: string,
+  platformId: string,
   message: string = '0',
   delegation?: AgentDelegation,
 ): Promise<TesseraProof> {
@@ -69,12 +69,13 @@ export async function prove(
     identity,
     group,
     message,
-    platformScope,
+    platformId,
   );
 
   return {
     semaphoreProof,
     credential,
+    platformId,
     delegation,
   };
 }

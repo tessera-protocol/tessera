@@ -52,10 +52,42 @@ npm install tessera-sdk
 ```
 
 ```typescript
-import { verify } from 'tessera-sdk';
+import {
+  createDelegation,
+  createIssuer,
+  createVerifier,
+  prove,
+} from 'tessera-sdk';
 
-const result = await verify(credential);
-// { valid: true, type: 'human', tier: 1, scope: {} }
+const issuer = createIssuer();
+const { credential, identitySecret, holderSecretKey } = issuer.issue({
+  tier: 1,
+  jurisdiction: 'EU',
+  anchorHash: 'sha256-of-bank-account-id',
+});
+
+const delegation = createDelegation(holderSecretKey, credential, {
+  agentName: 'research-agent',
+  scope: { canPost: true },
+  expiresAt: Math.floor(Date.now() / 1000) + 3600,
+});
+
+const proof = await prove(
+  identitySecret,
+  issuer.getGroup(),
+  credential,
+  'platform-xyz',
+  'nonce-123',
+  delegation,
+);
+
+const verifier = createVerifier({
+  platformId: 'platform-xyz',
+  trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+});
+
+const result = await verifier.verify(proof);
+// { valid: true, type: 'agent', tier: 1, scope: { canPost: true } }
 ```
 
 ## Protocol Specification

@@ -23,12 +23,10 @@ import type {
   Jurisdiction,
   TesseraIssuerConfig,
 } from './types.js';
+import { generateEd25519KeyPair, signCredential } from './crypto.js';
 
 /** One year in seconds. */
 const DEFAULT_CREDENTIAL_LIFETIME = 365 * 24 * 60 * 60;
-
-/** Default Merkle tree depth (supports up to 2^20 = ~1M members). */
-const DEFAULT_GROUP_DEPTH = 20;
 
 /**
  * Create a Tessera issuer instance.
@@ -56,6 +54,7 @@ const DEFAULT_GROUP_DEPTH = 20;
 export function createIssuer(config?: TesseraIssuerConfig) {
   const group = new Group();
   const anchorHashes = new Set<string>();
+  const issuerKeys = getIssuerKeys(config);
 
   return {
     /**
@@ -71,7 +70,11 @@ export function createIssuer(config?: TesseraIssuerConfig) {
       tier: AnchorTier;
       jurisdiction: Jurisdiction;
       anchorHash: string;
-    }): { credential: TesseraCredential; identitySecret: string } {
+    }): {
+      credential: TesseraCredential;
+      identitySecret: string;
+      holderSecretKey: string;
+    } {
       // Deduplication check
       if (anchorHashes.has(params.anchorHash)) {
         throw new Error(
@@ -82,6 +85,7 @@ export function createIssuer(config?: TesseraIssuerConfig) {
 
       // Create a new Semaphore identity
       const identity = new Identity();
+      const holderKeys = generateEd25519KeyPair();
 
       // Add to the credential group
       group.addMember(identity.commitment);
@@ -97,18 +101,27 @@ export function createIssuer(config?: TesseraIssuerConfig) {
         verifiedAt: now,
       };
 
-      const credential: TesseraCredential = {
+      const unsignedCredential = {
         identityCommitment: identity.commitment.toString(),
+        holderPublicKey: holderKeys.publicKeyPem,
+        issuerPublicKey: issuerKeys.publicKeyPem,
         anchor,
         expiresAt: now + DEFAULT_CREDENTIAL_LIFETIME,
-        // TODO: Replace with actual issuer signature (Ed25519 or similar)
-        issuerSignature: 'placeholder-signature',
+      };
+      const credential: TesseraCredential = {
+        ...unsignedCredential,
+        issuerSignature: signCredential(
+          unsignedCredential,
+          issuerKeys.privateKeyPem,
+        ),
       };
 
       return {
         credential,
         // The user must store this securely — it's their ZK identity secret
         identitySecret: identity.export(),
+        // The user also needs this key for agent delegation signatures.
+        holderSecretKey: holderKeys.privateKeyPem,
       };
     },
 
@@ -134,5 +147,26 @@ export function createIssuer(config?: TesseraIssuerConfig) {
     getMemberCount(): number {
       return group.members.length;
     },
+
+    /**
+     * Get the issuer public key platforms should trust for this issuer.
+     */
+    getIssuerPublicKey(): string {
+      return issuerKeys.publicKeyPem;
+    },
   };
+}
+
+function getIssuerKeys(config?: TesseraIssuerConfig): {
+  privateKeyPem: string;
+  publicKeyPem: string;
+} {
+  if (config?.issuerPrivateKeyPem && config.issuerPublicKeyPem) {
+    return {
+      privateKeyPem: config.issuerPrivateKeyPem,
+      publicKeyPem: config.issuerPublicKeyPem,
+    };
+  }
+
+  return generateEd25519KeyPair();
 }
