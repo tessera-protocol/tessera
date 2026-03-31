@@ -1,10 +1,7 @@
 \documentclass[11pt, a4paper]{article}
 
-% ── Typography ──
 \usepackage[T1]{fontenc}
 \usepackage[english]{babel}
-
-% ── Layout ──
 \usepackage[
   top=3.2cm, bottom=3.2cm,
   left=2.8cm, right=2.8cm
@@ -14,7 +11,6 @@
 \setlength{\parskip}{0.5em}
 \setlength{\parindent}{0pt}
 
-% ── Packages ──
 \usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage{hyperref}
@@ -28,29 +24,25 @@
 \usepackage{float}
 \usepackage{tabularx}
 
-% ── Colors ──
 \definecolor{accent}{HTML}{2b5797}
 \definecolor{linkblue}{HTML}{1a5276}
 \definecolor{codebg}{HTML}{f4f4f8}
 \definecolor{codegrey}{HTML}{555555}
 
-% ── Hyperlinks ──
 \hypersetup{
   colorlinks=true,
   linkcolor=accent,
   citecolor=accent,
   urlcolor=linkblue,
-  pdftitle={Tessera: A Protocol for Human and Agent Identity},
+  pdftitle={Tessera: Identity for Humans and Their Agents},
   pdfauthor={Guglielmo Reggio}
 }
 
-% ── Section styling ──
 \titleformat{\section}{\Large\bfseries}{\thesection.}{0.6em}{}
 \titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.5em}{}
 \titlespacing{\section}{0pt}{2em}{0.8em}
 \titlespacing{\subsection}{0pt}{1.4em}{0.5em}
 
-% ── Code listings ──
 \lstset{
   backgroundcolor=\color{codebg},
   basicstyle=\small\ttfamily\color{codegrey},
@@ -68,13 +60,11 @@
   framexbottommargin=0.5em,
 }
 
-% ── Headers / footers ──
 \pagestyle{fancy}
 \fancyhf{}
 \renewcommand{\headrulewidth}{0pt}
-\fancyfoot[C]{\small\color{gray} Tessera Protocol --- Working Draft v0.1 --- March 2026 \hfill \thepage}
+\fancyfoot[C]{\small\color{gray} Tessera Protocol --- Working Draft v0.2 --- March 2026 \hfill \thepage}
 
-% ── List spacing ──
 \setlist[itemize]{topsep=0.3em, itemsep=0.15em, parsep=0pt}
 \setlist[enumerate]{topsep=0.3em, itemsep=0.15em, parsep=0pt}
 
@@ -85,12 +75,12 @@
 % TITLE PAGE
 % ═══════════════════════════════════════
 \thispagestyle{empty}
-\vspace*{4cm}
+\vspace*{3.5cm}
 
 \begin{center}
   {\Huge\bfseries TESSERA}\\[0.8em]
-  {\Large A Protocol for Human and Agent Identity}\\[2.5em]
-  {\large Working Draft v0.1}\\[1.2em]
+  {\Large Identity for Humans and Their Agents}\\[2.5em]
+  {\large Working Draft v0.2}\\[1.2em]
   {\large Guglielmo Reggio}\\[0.6em]
   {\normalsize March 2026}\\[4em]
   \rule{8cm}{0.4pt}\\[1.5em]
@@ -103,15 +93,19 @@
 
 \newpage
 \setcounter{page}{1}
+\tableofcontents
+\newpage
 
 
 % ═══════════════════════════════════════
 % ABSTRACT
 % ═══════════════════════════════════════
 \begin{abstract}
-Tessera is an open protocol for anchoring digital identity to real-world financial verification, issuing portable cryptographic credentials to humans and the autonomous agents acting on their behalf. It produces W3C Verifiable Credentials backed by zero-knowledge proofs, rooted in existing bank KYC infrastructure, with a delegation model that extends trust from humans to their agents without revealing personal data.
+\noindent Tessera is an open protocol and consumer platform for digital identity. It anchors identity to real-world financial verification, issues portable cryptographic credentials backed by zero-knowledge proofs, and provides the first identity and wallet system for autonomous AI agents.
 
-As AI agents proliferate---browsing, transacting, communicating, and making decisions autonomously---the internet faces a dual crisis. Social platforms and digital services cannot reliably distinguish humans from bots. Agents cannot prove who authorised them or what they are permitted to do. Tessera addresses both problems with a single, privacy-preserving primitive: a verifiable credential rooted in existing bank KYC, with a delegation model that extends trust from humans to their agents.
+The internet faces three converging crises. Social platforms cannot distinguish humans from bots. AI agents cannot prove who authorised them. And AI-generated content is flooding every medium---text, image, audio, video---with no reliable way to verify human authorship. Tessera addresses all three with a single primitive: a privacy-preserving credential rooted in existing bank KYC, with a delegation model for agents and a provenance system for human-created content.
+
+Tessera is not a cryptocurrency, does not require biometric scanning, and does not store personal data. It is an open standard built on W3C Verifiable Credentials and Semaphore zero-knowledge proofs, delivered through a consumer app that makes identity portable across the digital and physical worlds.
 \end{abstract}
 
 
@@ -128,7 +122,7 @@ Current defences---CAPTCHAs, phone verification, email confirmation---impose fri
 
 \subsection{The Agent Identification Gap}
 
-The emergence of autonomous AI agents introduces a new dimension to the identity problem. Systems such as Claude Code, MCP-connected assistants, and open-source agent frameworks can send emails, execute transactions, post content, and interact with services autonomously on behalf of human principals. Yet they have no standard way to prove:
+The emergence of autonomous AI agents introduces a new dimension to the identity problem. Systems such as OpenClaw, Claude Code, MCP-connected assistants, and open-source agent frameworks can send emails, execute transactions, post content, and interact with services autonomously on behalf of human principals. Yet they have no standard way to prove:
 
 \begin{itemize}
   \item That a human principal exists and authorised the agent
@@ -138,6 +132,12 @@ The emergence of autonomous AI agents introduces a new dimension to the identity
 \end{itemize}
 
 Without this, platforms face an impossible choice: block all automated access (harming legitimate automation) or permit it (opening the door to unbounded bot activity). Neither is acceptable as agentic AI becomes mainstream.
+
+\subsection{The Content Provenance Crisis}
+
+AI-generated content is flooding every medium. Text, images, music, video, and code can now be produced at scale with no reliable way to distinguish machine output from human creation. This threatens the livelihoods of creators, the integrity of information ecosystems, and the trust that underpins creative economies.
+
+Existing provenance initiatives (C2PA, Adobe Content Credentials) are tied to specific tools---you must use particular software or hardware to generate provenance metadata. There is no tool-agnostic way for a human creator to sign their work and prove ``a real, unique person made this'' without revealing who they are.
 
 \subsection{The Credential Fragmentation Problem}
 
@@ -160,11 +160,12 @@ Tessera is designed to satisfy the following properties simultaneously:
 \midrule
 Sybil resistance & One real-world person maps to exactly one root credential. Economic cost of multiple identities is prohibitive. \\
 Privacy preservation & No personal data is transmitted during verification. Platforms learn only that the credential is valid, its tier, and (for agents) its scope. \\
-Portability & A credential issued once is valid everywhere that accepts the Tessera standard. No re-verification required. \\
-Agent-awareness & The delegation model natively supports AI agents acting on behalf of human principals, with scoped permissions and revocation. \\
-Accessibility & No cryptocurrency, no hardware tokens, no biometric devices. Any person with a bank account can participate. \\
-Revocability & Humans can revoke agent delegations instantly. Credentials themselves can be invalidated by the issuer. \\
-Open standard & The protocol is open, auditable, and not controlled by any single entity. Built on W3C Verifiable Credentials. \\
+Portability & A credential issued once is valid everywhere that accepts the Tessera standard. \\
+Agent-native & Delegation to autonomous agents is a first-class protocol primitive with scoped permissions and instant revocation. \\
+Human provenance & Creators can sign their work with a zero-knowledge proof of human authorship. \\
+Progressive trust & Multiple verification layers stack to increase credential strength. Higher tiers unlock more capabilities. \\
+Accessibility & No cryptocurrency, no hardware tokens, no biometric devices. Any person with a smartphone can participate. \\
+Open standard & The protocol is open, auditable, and not controlled by any single entity. \\
 \bottomrule
 \end{tabularx}
 \caption{Tessera design goals.}
@@ -172,63 +173,39 @@ Open standard & The protocol is open, auditable, and not controlled by any singl
 
 
 % ═══════════════════════════════════════
-% 3. THREAT MODEL
+% 3. ARCHITECTURE
 % ═══════════════════════════════════════
-\section{Threat Model}
+\section{Protocol Architecture}
 
-Tessera is designed to defend against the following attack classes:
+Tessera is structured as four protocol layers, each buildable independently and composable into the full system.
+
+\subsection{Layer 1---The Anchor (Root of Trust)}
+
+The anchor is the real-world signal that makes a Tessera credential meaningful. Multiple anchor types are supported, ranked by assurance level:
 
 \begin{table}[H]
 \centering
 \small
-\begin{tabularx}{\textwidth}{@{}lX@{}}
+\begin{tabularx}{\textwidth}{@{}clX@{}}
 \toprule
-\textbf{Attack} & \textbf{Defence} \\
+\textbf{Tier} & \textbf{Method} & \textbf{Description} \\
 \midrule
-Sybil (multiple fake identities) & Each bank account maps to one credential. Deduplication at issuance via one-way hash. Cost of attack = cost of creating multiple real bank accounts. \\
-Stolen credential reuse & Credentials are device-bound at issuance. Nullifiers prevent double-presentation on any single platform. \\
-Agent impersonation & Agent credentials cryptographically chain to a parent human credential. Forgery requires breaking the signature scheme. \\
-Scope violation by agent & Scope is encoded in the credential and verified by the SDK. Out-of-scope actions are rejected at the verification layer. \\
-Prompt injection via agent & Agent credentials carry a maximum trust level set by the human. Platforms can refuse elevated-risk actions from agents below a trust threshold. \\
-Platform fingerprinting & Zero-knowledge proofs ensure platforms learn no information beyond credential validity. \\
-Credential resale & Credentials are non-transferable. The ZK proof is tied to a device key generated at issuance. \\
+1 & Bank KYC & Open banking verification (Plaid, TrueLayer). Strongest assurance. Account must be real, active, and not previously used. \\
+2 & Card verification & Stripe-style microcharge with name match. Near-global coverage. \\
+3 & Phone + email & Mobile carrier verification combined with email confirmation. \\
+4 & Verification network & Existing verified users attest to new users. Graph-weighted trust scoring. \\
 \bottomrule
 \end{tabularx}
-\caption{Threat model and defences.}
+\caption{Anchor tiers ranked by assurance level.}
 \end{table}
 
-Tessera does not claim to prevent all misuse by verified humans. A real person can still behave badly after verification. The optional deposit mechanism (Section~\ref{sec:verification}) creates economic accountability without requiring identity disclosure.
+The anchor tier is encoded in the issued credential, allowing platforms to set minimum assurance levels. A social network might accept Tier~4; a financial service might require Tier~1. Critically, no anchor data is stored after credential issuance. Only a one-way hash of the anchor identifier is retained for deduplication.
 
-
-% ═══════════════════════════════════════
-% 4. ARCHITECTURE
-% ═══════════════════════════════════════
-\section{Architecture}
-
-Tessera is structured as four layers, each buildable independently and composable into the full protocol.
-
-\subsection{Layer 1---The Anchor (Root of Trust)}
-\label{sec:anchor}
-
-The anchor is the real-world signal that makes a Tessera credential meaningful. In the primary path, this is a bank account connected via open banking APIs (Plaid, TrueLayer, or equivalent). The system verifies that the account is real, active, and has not previously been used to issue a Tessera credential.
-
-Alternative anchors are supported, ranked by assurance level:
-
-\begin{itemize}
-  \item \textbf{Tier 1}---Open banking (bank account + KYC, strongest assurance)
-  \item \textbf{Tier 2}---Card verification (Stripe-style microcharge with name match)
-  \item \textbf{Tier 3}---Mobile carrier verification (phone bill identity)
-  \item \textbf{Tier 4}---Social graph vouching (existing Tier 1/2 holders attest to new users)
-\end{itemize}
-
-The anchor tier is encoded in the issued credential, allowing platforms to set minimum assurance levels for their use case. A social network might accept Tier~3; a financial service might require Tier~1.
-
-Critically, no anchor data is stored after credential issuance. Only a one-way hash of the account identifier is retained for deduplication.
+Tiers are additive: a user who starts with Tier~4 (verification network) can upgrade to Tier~1 (bank KYC) at any time, and both verification signals are reflected in their credential. More layers of verification yield a stronger credential with access to more features across the ecosystem.
 
 \subsection{Layer 2---The Credential}
-\label{sec:credential}
 
-Following successful anchor verification, the Tessera issuer generates a Verifiable Credential conforming to the W3C VC Data Model \cite{w3c-vc}:
+Upon successful anchor verification, the Tessera issuer generates a Verifiable Credential conforming to the W3C VC Data Model \cite{w3c-vc}, backed by a Semaphore \cite{semaphore} zero-knowledge proof:
 
 \begin{lstlisting}
 {
@@ -241,23 +218,20 @@ Following successful anchor verification, the Tessera issuer generates a Verifia
     "issuedAt": 1743000000,
     "expiresAt": 1774536000
   },
-  "proof": "<zk-proof>"
+  "proof": "<semaphore-zk-proof>"
 }
 \end{lstlisting}
 
-No name, email, account number, or personally identifiable information is included. The zero-knowledge proof allows any verifier to confirm the credential is valid without learning anything about the underlying anchor.
-
-Credentials are stored locally on the user's device. Tessera's servers hold only the nullifier registry---a set of hashed credential identifiers used to detect double-presentation.
+No name, email, account number, or personally identifiable information is included. The zero-knowledge proof (Groth16 via Semaphore) allows any verifier to confirm the credential is valid without learning anything about the underlying anchor. Credentials are stored locally on the user's device. The issuer retains only a nullifier registry---a set of hashed credential identifiers used to detect double-presentation.
 
 \subsection{Layer 3---Agent Delegation}
-\label{sec:delegation}
 
-A human credential holder can delegate to one or more agent identities. Each agent credential cryptographically references its parent and encodes a scope and expiry:
+A human credential holder can delegate to one or more agent identities. Each agent credential is cryptographically signed by the parent human, referencing their identity commitment and encoding a scope and expiry:
 
 \begin{lstlisting}
 {
   "type": "TesseraAgentCredential",
-  "parentCredentialId": "<human-credential-hash>",
+  "parentCommitment": "<human-identity-commitment>",
   "agentName": "my-agent",
   "scope": {
     "canPost": true,
@@ -268,7 +242,7 @@ A human credential holder can delegate to one or more agent identities. Each age
   },
   "issuedAt": 1743000000,
   "expiresAt": 1743604800,
-  "revocationEndpoint": "https://tessera.example/revoke"
+  "parentSignature": "<ed25519-signature>"
 }
 \end{lstlisting}
 
@@ -278,41 +252,158 @@ Delegations form a tree with the following properties:
   \item A child credential cannot exceed the scope of its parent.
   \item Revoking a parent immediately invalidates all children.
   \item The human holds the revocation key; no third party can revoke on their behalf.
-  \item Agents can further sub-delegate (e.g.\ a task-specific sub-agent) within their own scope.
+  \item Agents can further sub-delegate within their own scope.
 \end{enumerate}
 
 \subsection{Layer 4---Verification API}
-\label{sec:verification}
 
-Platforms and services integrate Tessera through an open-source SDK. The verification flow is designed to complete in under 200\,ms:
+Platforms and services integrate Tessera through an open-source SDK. The verification flow completes in under 200\,ms:
 
 \begin{enumerate}
   \item Platform requests credential from user or agent.
   \item User or agent presents signed Verifiable Credential.
-  \item SDK verifies ZK proof (cryptographic validity).
-  \item SDK checks nullifier registry (not previously used on this platform).
+  \item SDK verifies ZK proof via Semaphore (cryptographic validity).
+  \item SDK verifies issuer signature (credential authenticity).
+  \item SDK checks nullifier registry (double-presentation detection).
   \item SDK checks revocation status (for agent credentials).
   \item Returns: \texttt{\{ valid, type, tier, scope \}}.
 \end{enumerate}
 
-\begin{lstlisting}
-interface VerificationResult {
-  valid: boolean;
-  type: 'human' | 'agent';
-  tier: 1 | 2 | 3 | 4;
-  scope: AgentScope | null;
-}
-\end{lstlisting}
 
-An optional accountability layer allows platforms to require a small refundable deposit for high-risk actions. Deposits are held in escrow and slashed only upon verified abuse, at which point a minimal disclosure is made to the claiming platform---not full identity, just credential status.
+% ═══════════════════════════════════════
+% 4. THE TESSERA APP
+% ═══════════════════════════════════════
+\section{The Tessera App}
+
+The protocol is delivered through a consumer application---the Tessera App---that serves as both a credential wallet and the primary interface for identity management. The app is designed to make zero-knowledge identity as intuitive as a passport.
+
+\subsection{Tessera Passport}
+
+Each user's primary view is their Tessera Passport: a digital identity card displaying their verification tier, the types of verification they have completed, and a QR code for instant sharing. The passport carries no personal information---it is a visual representation of a cryptographic credential.
+
+Users can progressively strengthen their passport by completing additional verification layers. Starting from a social verification (Tier~4), they can add phone confirmation (Tier~3), card verification (Tier~2), and bank KYC (Tier~1). Each layer adds credential strength and unlocks additional capabilities across the Tessera ecosystem.
+
+\subsection{Agent Wallets}
+
+The app provides a dedicated interface for creating and managing agent credentials. A user can:
+
+\begin{itemize}
+  \item Create a new agent wallet with a human-readable name
+  \item Define the agent's scope (what it can do, spending limits, permitted categories)
+  \item Set an expiry (hours, days, or weeks)
+  \item Export a credential token for use in agent configurations (Claude Code, OpenClaw, MCP servers, or any compatible framework)
+  \item Monitor agent activity in a structured log
+  \item Revoke any agent credential instantly with a single action
+\end{itemize}
+
+This is the first consumer-facing identity and wallet system for AI agents---allowing any user to manage, authorise, and control the agents acting on their behalf.
+
+\subsection{Verification Network}
+
+The app includes a verification network through which users strengthen their own credentials and those of others. When two users verify each other (in person via NFC or remotely via the app), both credentials gain trust weight.
+
+The network uses graph-weighted trust scoring rather than simple referral counting. Vouches from users in different social clusters carry more weight than vouches from within a tightly-connected group, providing natural resistance to collusion rings. The system uses institutional framing (``verification network'') rather than social framing (``friends'' or ``followers''), reflecting that Tessera is an identity infrastructure, not a social network.
 
 
 % ═══════════════════════════════════════
-% 5. PRIVACY GUARANTEES
+% 5. HUMAN PROVENANCE
+% ═══════════════════════════════════════
+\section{Human Provenance}
+
+As AI-generated content floods every digital medium, the ability to prove human authorship becomes critical infrastructure. Tessera provides tool-agnostic content provenance through zero-knowledge human attestation.
+
+\subsection{The Problem}
+
+AI systems can now generate text, images, music, video, and code that is indistinguishable from human-created work. This threatens creative economies (streaming platforms flooded with AI-generated music), information integrity (AI-generated articles and social media posts), and trust in digital content broadly.
+
+Existing provenance solutions (C2PA, Adobe Content Credentials) require specific creation tools. A photographer must use a C2PA-compatible camera; a writer must use a participating text editor. There is no way for a creator using any tool to independently attest ``I, a verified unique human, created this work.''
+
+\subsection{Tessera Watermark}
+
+A Tessera credential holder can generate a \textbf{Tessera Watermark}---a zero-knowledge signature that proves:
+
+\begin{itemize}
+  \item The signer is a verified unique human (Semaphore group membership proof)
+  \item The signature is bound to a specific content hash (the work cannot be swapped)
+  \item The signer's identity is not revealed (zero-knowledge property)
+\end{itemize}
+
+The watermark is a compact data structure appended to or embedded in the content. Any verifier can confirm ``a real, verified human signed this'' without learning who. The same human can watermark multiple works without those works being linkable to each other or to the creator's identity.
+
+\subsection{Applications}
+
+\begin{itemize}
+  \item \textbf{Music and audio:} Streaming platforms can distinguish human-composed tracks from AI-generated content for curation, playlist placement, and royalty eligibility.
+  \item \textbf{Written content:} Publishers and platforms can verify human authorship of articles, reviews, and academic work.
+  \item \textbf{Visual art:} Marketplaces can flag or prioritise human-created artwork.
+  \item \textbf{Code:} Open-source projects can verify that contributions come from real humans, not automated systems.
+  \item \textbf{Social media:} Platforms can surface human-created posts with higher confidence.
+\end{itemize}
+
+The watermark system builds directly on the existing Tessera credential infrastructure---no new cryptographic primitives are required. A user who already has a Tessera Passport can watermark content from within the app or via the SDK.
+
+
+% ═══════════════════════════════════════
+% 6. ECOSYSTEM
+% ═══════════════════════════════════════
+\section{Ecosystem}
+
+Tessera is designed as a platform that third-party applications and services can build upon. The ecosystem model is inspired by the integration patterns of open identity standards (OAuth, OpenID Connect) but extended to support agent credentials and human provenance.
+
+\subsection{Integration Model}
+
+Any application can integrate Tessera through the open-source SDK. Integration surfaces include:
+
+\begin{itemize}
+  \item \textbf{``Verify with Tessera'' button:} A web or app-based verification flow, analogous to ``Sign in with Google'' but privacy-preserving. The platform learns only the verification tier and (if agent) the scope---never the user's identity.
+  \item \textbf{Agent verification endpoint:} An API endpoint that AI agents call to present their delegation credentials. MCP servers, API gateways, and agent frameworks can verify agent authorisation in a single HTTP call.
+  \item \textbf{Watermark verification:} Content platforms can check Tessera Watermarks to confirm human authorship, displayed as a ``Human Verified'' badge or used for algorithmic curation.
+\end{itemize}
+
+\subsection{Ecosystem Partners}
+
+The initial ecosystem targets two verticals:
+
+\textbf{Agent-native services.} MCP servers, AI platforms, and automation tools integrate Tessera to verify that connecting agents are authorised by real humans. This addresses the immediate pain point of bot proliferation in agent ecosystems.
+
+\textbf{Human provenance services.} Content platforms, creative marketplaces, streaming services, and publishers integrate Tessera Watermarks to distinguish human-created content from AI-generated material.
+
+These verticals are complementary: the agent vertical proves ``this agent is authorised by a real human,'' while the provenance vertical proves ``this content was created by a real human.'' Both stem from the same underlying credential.
+
+
+% ═══════════════════════════════════════
+% 7. COMPARISON
+% ═══════════════════════════════════════
+\section{Comparison with Existing Approaches}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lccccX@{}}
+\toprule
+ & \textbf{Sybil} & \textbf{No bio-} & \textbf{Agent} & \textbf{Human} & \textbf{Open} \\
+\textbf{System} & \textbf{resist.} & \textbf{metrics} & \textbf{support} & \textbf{proven.} & \textbf{standard} \\
+\midrule
+Email / phone & Low & Yes & No & No & Partial \\
+Google / Apple SSO & Medium & Yes & No & No & No \\
+Worldcoin / World ID & High & No & No & No & Partial \\
+Gitcoin Passport & Medium & Yes & No & No & Yes \\
+C2PA / Content Cred. & N/A & Yes & No & Partial & Yes \\
+\textbf{Tessera} & \textbf{High} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} \\
+\bottomrule
+\end{tabularx}
+\caption{Comparison with existing identity and provenance systems.}
+\end{table}
+
+Tessera occupies a unique position: high Sybil resistance without biometrics, native agent support, content provenance, and an open standard. No existing system combines all five properties.
+
+Relative to Worldcoin specifically, Tessera differs in three fundamental ways: it does not require biometric hardware (no orb), it does not issue or depend on a cryptocurrency token, and it provides first-class support for AI agent delegation. Tessera shares Worldcoin's ambition of universal digital identity but pursues it through existing financial infrastructure (bank KYC) and social trust (verification networks) rather than biometric scanning.
+
+
+% ═══════════════════════════════════════
+% 8. PRIVACY
 % ═══════════════════════════════════════
 \section{Privacy Guarantees}
-
-The following table summarises what each party learns during a Tessera verification:
 
 \begin{table}[H]
 \centering
@@ -323,48 +414,49 @@ The following table summarises what each party learns during a Tessera verificat
 \midrule
 Verifying platform & Credential is valid, anchor tier, credential age, agent scope (if agent) & User's name, bank, email, or any PII \\
 Tessera issuer & Anchor hash at issuance (discarded after), nullifier at re-verification & What platforms the user verifies with \\
+Content consumers & That a verified human signed the content & Who the creator is, or whether two works share a creator \\
 Other users & Nothing---credentials are not publicly visible & --- \\
-Governments / third parties & Nothing without legal process directed at the user's bank & --- \\
+Governments & Nothing without legal process directed at the user's bank & --- \\
 \bottomrule
 \end{tabularx}
 \caption{Privacy guarantees by party.}
 \end{table}
 
-Tessera's privacy model is strictly stronger than existing verification systems (phone verification, social login, document KYC), all of which expose significant PII to verifying parties.
+Tessera's privacy model is strictly stronger than existing verification systems (phone verification, social login, document KYC), all of which expose significant PII to verifying parties. The content provenance system adds a new privacy guarantee: creators can prove human authorship without revealing their identity, and multiple works by the same creator cannot be linked.
 
 
 % ═══════════════════════════════════════
-% 6. COMPARISON
+% 9. THREAT MODEL
 % ═══════════════════════════════════════
-\section{Comparison with Existing Approaches}
+\section{Threat Model}
 
 \begin{table}[H]
 \centering
 \small
-\begin{tabularx}{\textwidth}{@{}lXll@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-\textbf{System} & \textbf{Sybil Resistance} & \textbf{Agent Support} & \textbf{Open} \\
+\textbf{Attack} & \textbf{Defence} \\
 \midrule
-Email / phone verification & Low (disposable numbers) & None & Partial \\
-Sign In with Google / Apple & Medium (account age signals) & None & No \\
-Worldcoin / World ID & High (biometric) & None & Partial \\
-Gitcoin Passport & Medium (aggregated signals) & None & Yes \\
-Civic / Proof of Humanity & High (on-chain) & None & Yes \\
-\textbf{Tessera} & \textbf{High (bank KYC anchor)} & \textbf{Native} & \textbf{Yes} \\
+Sybil (multiple fake identities) & Each bank account maps to one credential. Social vouching uses graph-weighted trust scoring with collusion resistance. \\
+Stolen credential reuse & Credentials are device-bound. Nullifiers prevent double-presentation per platform. \\
+Agent impersonation & Agent credentials are Ed25519-signed by the parent human. Forgery requires the parent's private key. \\
+Scope escalation & Scope is encoded in the delegation and verified by the SDK. Scope containment is enforced cryptographically. \\
+Collusion rings & Graph-weighted trust scoring penalises vouches from within tightly-connected clusters. Cross-cluster vouches carry more weight. \\
+False provenance & Watermarks are bound to content hashes. Swapping the content invalidates the watermark. \\
+Platform fingerprinting & Zero-knowledge proofs ensure platforms learn no information beyond credential validity. \\
+Credential resale & Credentials are non-transferable. The ZK proof is tied to a device key generated at issuance. \\
 \bottomrule
 \end{tabularx}
-\caption{Comparison with existing identity systems.}
+\caption{Threat model and defences.}
 \end{table}
 
-The key differentiator is not any single property but the combination: high Sybil resistance, no biometric collection, no cryptocurrency requirement, native agent support, and an open standard that no single entity controls.
+Tessera does not claim to prevent all misuse by verified humans. A real person can still behave badly after verification. The progressive verification model creates layered accountability: higher-tier credentials carry more trust weight and unlock more capabilities, creating natural incentives for genuine verification.
 
 
 % ═══════════════════════════════════════
-% 7. OPEN QUESTIONS
+% 10. OPEN QUESTIONS
 % ═══════════════════════════════════════
 \section{Open Questions}
-
-This draft identifies the following areas requiring further design work:
 
 \begin{table}[H]
 \centering
@@ -373,13 +465,12 @@ This draft identifies the following areas requiring further design work:
 \toprule
 \textbf{Question} & \textbf{Current Thinking} \\
 \midrule
-ZK proof stack & Semaphore (Ethereum) is the most mature option. Noir offers more flexibility. snarkjs + PLONK provides good JS tooling without a trusted setup ceremony. Decision pending security review. \\
-Nullifier registry & Centralised registry is simpler and faster. On-chain offers censorship resistance. Proposed: start centralised, migrate on-chain by v1.0 with public commitment. \\
-Cross-anchor deduplication & A person with accounts at multiple banks could potentially obtain multiple Tier~1 credentials. Mitigation requires a shared identifier across anchors (e.g.\ a hashed national ID surfaced through open banking), which varies by jurisdiction. \\
-Global banking coverage & Open banking is mature in EU/UK (PSD2) and growing in the US. Tier~2 (card verification) provides near-global fallback. \\
-Credential renewal & Annual renewal proposed. Renewal should not require full re-anchoring if the original anchor remains valid. \\
-Agent credential standards & No existing standard for agent authorisation credentials. Tessera may need to propose an extension to the W3C VC specification for agentic scope encoding. \\
-Governance and key ceremony & Issuer keys must be managed via multi-party computation or hardware security modules. Governance model for protocol upgrades to be defined before v1.0. \\
+Cross-anchor deduplication & A person with accounts at multiple banks could obtain multiple credentials. Mitigation requires a shared identifier across anchors, which varies by jurisdiction. \\
+Nullifier decentralisation & Centralised registry for launch. On-chain migration planned for v1.0 with public commitment to decentralisation timeline. \\
+Graph-weighted trust & Optimal weighting function for cross-cluster vs.\ intra-cluster vouches. Needs simulation and adversarial testing. \\
+Content watermark format & Embedding mechanism varies by medium (metadata fields for audio, EXIF for images, headers for text). Standard format needed. \\
+Digital ID certification & UK DIATF and EU eIDAS 2.0 certification paths for real-world identity acceptance. Requires compliance work. \\
+Agent credential standards & No existing standard for agent authorisation credentials. Tessera may propose a W3C VC extension for agentic scope encoding. \\
 \bottomrule
 \end{tabularx}
 \caption{Open design questions.}
@@ -387,9 +478,9 @@ Governance and key ceremony & Issuer keys must be managed via multi-party comput
 
 
 % ═══════════════════════════════════════
-% 8. ROADMAP
+% 11. ROADMAP
 % ═══════════════════════════════════════
-\section{Implementation Roadmap}
+\section{Roadmap}
 
 \begin{table}[H]
 \centering
@@ -398,11 +489,11 @@ Governance and key ceremony & Issuer keys must be managed via multi-party comput
 \toprule
 \textbf{Phase} & \textbf{Scope} \\
 \midrule
-Phase 0---Spec (now) & Publish whitepaper. Gather community feedback. Establish GitHub organisation and open-source repository. \\
-Phase 1---MVP (weeks 1--4) & JWT-based credential stub (no ZK yet). Stripe Identity for initial KYC. Agent delegation via signed JWTs. Open-source npm SDK (\texttt{tessera-sdk}). Developer preview. \\
-Phase 2---Beta (months 2--3) & ZK proof integration. Open banking connection via TrueLayer. Revocation infrastructure. First platform integrations. Security audit. \\
-Phase 3---v1.0 (month 6+) & Full W3C VC compliance. Nullifier registry public and auditable. Multi-tier anchor support. Android and iOS credential wallet app. \\
-Phase 4---Decentralisation & Migrate nullifier registry on-chain. Multi-party issuer key ceremony. Foundation-style protocol governance. \\
+Phase 0---Spec (current) & Publish whitepaper. Open-source protocol implementation with Semaphore ZK layer, Ed25519 signatures, and SQLite nullifier registry. Community feedback. \\
+Phase 1---App MVP & Tessera App (web + iOS via Capacitor). Passport screen with progressive verification. Agent wallet creation and export. Verification network with invite flow. Stripe Identity for Tier~2 anchor. npm publish of \texttt{tessera-sdk}. \\
+Phase 2---Ecosystem & Agent verification integrations (MCP servers, OpenClaw, Claude Code). Human provenance watermark SDK. First ecosystem partner integrations. Apple Wallet pass. \\
+Phase 3---Scale & TrueLayer open banking for Tier~1. Full W3C VC compliance. Content watermark standard proposal. Security audit. Android app. \\
+Phase 4---Institutional & UK DIATF certification exploration. Nullifier registry decentralisation. Foundation-style governance. Real-world identity acceptance. \\
 \bottomrule
 \end{tabularx}
 \caption{Implementation roadmap.}
@@ -410,7 +501,7 @@ Phase 4---Decentralisation & Migrate nullifier registry on-chain. Multi-party is
 
 
 % ═══════════════════════════════════════
-% 9. OPEN SOURCE AND GOVERNANCE
+% 12. OPEN SOURCE AND GOVERNANCE
 % ═══════════════════════════════════════
 \section{Open Source and Governance}
 
@@ -418,16 +509,18 @@ Tessera is committed to an open core model. The following components are release
 
 \begin{itemize}
   \item The Tessera credential schema and protocol specification
-  \item The verification SDK (\texttt{tessera-sdk}, available as npm package)
-  \item The ZK proof library
-  \item Reference implementations of the credential wallet
+  \item The verification SDK (\texttt{tessera-sdk})
+  \item The ZK proof library (built on Semaphore)
+  \item The watermark generation and verification library
+  \item Reference implementations of agent delegation
 \end{itemize}
 
-The following components are developed as commercial products:
+The following components are developed as managed services:
 
 \begin{itemize}
-  \item The hosted verification oracle and API
-  \item The platform dashboard (analytics, abuse management, SLA)
+  \item The Tessera App
+  \item The hosted nullifier registry
+  \item The verification network infrastructure
   \item Enterprise integrations and support
 \end{itemize}
 
@@ -435,7 +528,7 @@ Protocol governance in Phase~1 rests with the founding team. An advisory board o
 
 
 % ═══════════════════════════════════════
-% 10. GET INVOLVED
+% 13. GET INVOLVED
 % ═══════════════════════════════════════
 \section{Get Involved}
 
@@ -443,9 +536,9 @@ Tessera is in its earliest stage. We are actively seeking:
 
 \begin{itemize}
   \item Feedback on the protocol design from identity and cryptography researchers
-  \item Early platform integrators willing to test the MVP SDK
+  \item Early ecosystem integrators (MCP servers, agent platforms, content platforms)
   \item Contributors to the open-source implementation
-  \item Advisors with experience in ZK cryptography, open banking, or agent systems
+  \item Advisors with experience in ZK cryptography, open banking, digital identity regulation, or agent systems
 \end{itemize}
 
 \vspace{1.5em}
@@ -472,9 +565,9 @@ Tessera is in its earliest stage. We are actively seeking:
   \url{https://www.w3.org/TR/did-core/}
 
 \bibitem{semaphore}
-  Ethereum Foundation,
-  \emph{Semaphore: A Zero-Knowledge Protocol for Anonymous Signalling},
-  2023.
+  Privacy \& Scaling Explorations, Ethereum Foundation,
+  \emph{Semaphore: A Zero-Knowledge Protocol for Anonymous Interactions},
+  2024.
   \url{https://semaphore.pse.dev/}
 
 \bibitem{plonk}
@@ -482,6 +575,12 @@ Tessera is in its earliest stage. We are actively seeking:
   \emph{PLONK: Permutations over Lagrange-bases for Oecumenical Noninteractive arguments of Knowledge},
   2019.
   IACR ePrint 2019/953.
+
+\bibitem{c2pa}
+  Coalition for Content Provenance and Authenticity,
+  \emph{C2PA Technical Specification},
+  2024.
+  \url{https://c2pa.org/specifications/}
 
 \bibitem{plaid}
   Plaid Inc.,
@@ -500,7 +599,7 @@ Tessera is in its earliest stage. We are actively seeking:
 \vfill
 \begin{center}
   \small\color{gray}
-  Tessera Protocol Working Draft v0.1 --- March 2026 --- Licensed under CC BY 4.0
+  Tessera Protocol Working Draft v0.2 --- March 2026 --- Licensed under CC BY 4.0
 \end{center}
 
 \end{document}
