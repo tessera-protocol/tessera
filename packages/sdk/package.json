@@ -1,0 +1,33 @@
+{
+  "name": "tessera-sdk",
+  "version": "0.0.1",
+  "description": "SDK for verifying Tessera identity credentials",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test src/**/*.test.ts",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "identity",
+    "verification",
+    "verifiable-credentials",
+    "zero-knowledge",
+    "sybil-resistance",
+    "agent-delegation"
+  ],
+  "author": "Guglielmo Reggio",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tessera-protocol/tessera"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
