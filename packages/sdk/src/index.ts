@@ -7,8 +7,12 @@
  * @example
  * ```typescript
  * // === Issuer side (your server) ===
- * import { createIssuer } from 'tessera-sdk';
- * const issuer = createIssuer();
+ * import { createIssuer, createVerifier, generateIssuerKeypair, prove } from 'tessera-sdk';
+ * const issuerKeys = generateIssuerKeypair();
+ * const issuer = createIssuer({
+ *   issuerPrivateKeyPem: issuerKeys.privateKeyPem,
+ *   issuerPublicKeyPem: issuerKeys.publicKeyPem,
+ * });
  * const { credential, identitySecret } = issuer.issue({
  *   tier: 1,
  *   jurisdiction: 'EU',
@@ -16,18 +20,18 @@
  * });
  *
  * // === User side (proving) ===
- * import { prove } from 'tessera-sdk';
  * const proof = await prove(
  *   identitySecret,
- *   group,
+ *   issuer.getGroup(),
  *   credential,
  *   'platform-xyz',
  * );
  *
  * // === Platform side (verifying) ===
- * import { createVerifier } from 'tessera-sdk';
  * const verifier = createVerifier({
- *   platformScope: 'platform-xyz',
+ *   platformId: 'platform-xyz',
+ *   trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+ *   trustedGroupRoots: issuer.getRecentRoots(),
  *   minimumTier: 2,
  * });
  * const result = await verifier.verify(proof);
@@ -45,6 +49,9 @@ export { prove } from './prover.js';
 
 // Delegation (agent authorization)
 export { createDelegation } from './delegation.js';
+
+// Key generation
+export { generateIssuerKeypair } from './crypto.js';
 
 // Verifier (platform-side verification)
 export { createVerifier } from './verifier.js';
@@ -66,6 +73,7 @@ export type {
   // Verification
   VerificationResult,
   TesseraVerifierConfig,
+  VerifyOptions,
   // Issuer
   TesseraIssuerConfig,
 } from './types.js';

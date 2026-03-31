@@ -148,16 +148,25 @@ export interface TesseraVerifierConfig {
   platformId: string;
   /** Trusted issuer public keys in PEM format. */
   trustedIssuerPublicKeys: string[];
+  /** Trusted Semaphore Merkle roots published by the issuer. */
+  trustedGroupRoots?: string[];
   /** SQLite file path for nullifier persistence. Defaults to in-memory. */
   nullifierDbPath?: string;
+}
+
+export interface VerifyOptions {
+  /** Trusted Semaphore Merkle roots for this verification call. */
+  trustedGroupRoots?: string[];
 }
 
 /**
  * Configuration for the Tessera issuer.
  */
 export interface TesseraIssuerConfig {
-  /** Optional PEM-encoded Ed25519 private key for deterministic issuer identity. */
-  issuerPrivateKeyPem?: string;
-  /** Optional PEM-encoded Ed25519 public key paired with issuerPrivateKeyPem. */
-  issuerPublicKeyPem?: string;
+  /** PEM-encoded Ed25519 private key for the issuer. */
+  issuerPrivateKeyPem: string;
+  /** PEM-encoded Ed25519 public key paired with issuerPrivateKeyPem. */
+  issuerPublicKeyPem: string;
+  /** Number of recent Merkle roots to retain for verification race windows. */
+  recentRootsLimit?: number;
 }

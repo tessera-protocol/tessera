@@ -27,7 +27,7 @@ import type {
  * @param identitySecret - The user's Semaphore identity secret (from issuance)
  * @param group - The current credential group (must contain the user's commitment)
  * @param credential - The user's Tessera credential (contains anchor metadata)
- * @param platformScope - The platform's unique identifier (used for nullifier scoping)
+ * @param platformId - The platform's unique identifier (used for nullifier scoping)
  * @param message - Optional message to include in the proof (e.g. a nonce from the platform)
  * @param delegation - Optional agent delegation (if proving on behalf of a human)
  *

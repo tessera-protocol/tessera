@@ -39,6 +39,8 @@ export function generateEd25519KeyPair(): {
   };
 }
 
+export const generateIssuerKeypair = generateEd25519KeyPair;
+
 export function signCredential(
   credential: Omit<TesseraCredential, 'issuerSignature'>,
   issuerPrivateKeyPem: string,

@@ -27,6 +27,7 @@ import { generateEd25519KeyPair, signCredential } from './crypto.js';
 
 /** One year in seconds. */
 const DEFAULT_CREDENTIAL_LIFETIME = 365 * 24 * 60 * 60;
+const DEFAULT_RECENT_ROOTS_LIMIT = 10;
 
 /**
  * Create a Tessera issuer instance.
@@ -36,9 +37,13 @@ const DEFAULT_CREDENTIAL_LIFETIME = 365 * 24 * 60 * 60;
  *
  * @example
  * ```typescript
- * import { createIssuer } from 'tessera-sdk';
+ * import { createIssuer, generateIssuerKeypair } from 'tessera-sdk';
  *
- * const issuer = createIssuer();
+ * const issuerKeys = generateIssuerKeypair();
+ * const issuer = createIssuer({
+ *   issuerPrivateKeyPem: issuerKeys.privateKeyPem,
+ *   issuerPublicKeyPem: issuerKeys.publicKeyPem,
+ * });
  *
  * // After verifying a user's bank account:
  * const { credential, identitySecret } = issuer.issue({
@@ -52,9 +57,18 @@ const DEFAULT_CREDENTIAL_LIFETIME = 365 * 24 * 60 * 60;
  * ```
  */
 export function createIssuer(config?: TesseraIssuerConfig) {
+  if (!config?.issuerPrivateKeyPem || !config.issuerPublicKeyPem) {
+    throw new Error(
+      'createIssuer requires issuerPrivateKeyPem and issuerPublicKeyPem. ' +
+      'Generate and persist an issuer keypair with generateIssuerKeypair() before issuing credentials.'
+    );
+  }
+
   const group = new Group();
   const anchorHashes = new Set<string>();
   const issuerKeys = getIssuerKeys(config);
+  const recentRootsLimit = config.recentRootsLimit ?? DEFAULT_RECENT_ROOTS_LIMIT;
+  const recentRoots = [group.root.toString()];
 
   return {
     /**
@@ -63,7 +77,7 @@ export function createIssuer(config?: TesseraIssuerConfig) {
      * @param params.tier - The anchor tier (1-4)
      * @param params.jurisdiction - The anchor jurisdiction
      * @param params.anchorHash - One-way hash of the anchor identifier (for dedup)
-     * @returns The credential and the identity secret (give to user)
+     * @returns The credential, the Semaphore identity secret, and the holder signing key
      * @throws If the anchor hash has already been used
      */
     issue(params: {
@@ -89,6 +103,10 @@ export function createIssuer(config?: TesseraIssuerConfig) {
 
       // Add to the credential group
       group.addMember(identity.commitment);
+      recentRoots.push(group.root.toString());
+      if (recentRoots.length > recentRootsLimit) {
+        recentRoots.shift();
+      }
 
       // Record the anchor hash for deduplication
       anchorHashes.add(params.anchorHash);
@@ -142,6 +160,13 @@ export function createIssuer(config?: TesseraIssuerConfig) {
     },
 
     /**
+     * Get a bounded history of recently valid group roots.
+     */
+    getRecentRoots(): string[] {
+      return [...recentRoots];
+    },
+
+    /**
      * Get the number of verified humans in the group.
      */
     getMemberCount(): number {
@@ -161,12 +186,8 @@ function getIssuerKeys(config?: TesseraIssuerConfig): {
   privateKeyPem: string;
   publicKeyPem: string;
 } {
-  if (config?.issuerPrivateKeyPem && config.issuerPublicKeyPem) {
-    return {
-      privateKeyPem: config.issuerPrivateKeyPem,
-      publicKeyPem: config.issuerPublicKeyPem,
-    };
-  }
-
-  return generateEd25519KeyPair();
+  return {
+    privateKeyPem: config!.issuerPrivateKeyPem,
+    publicKeyPem: config!.issuerPublicKeyPem,
+  };
 }

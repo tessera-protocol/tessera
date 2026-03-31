@@ -7,7 +7,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
+import { Group } from '@semaphore-protocol/group';
 import { createDelegation } from './delegation.js';
+import { generateIssuerKeypair } from './crypto.js';
 import { createIssuer } from './issuer.js';
 import { prove } from './prover.js';
 import { createVerifier } from './verifier.js';
@@ -20,9 +22,25 @@ afterEach(() => {
   }
 });
 
+function createTestIssuer() {
+  const issuerKeys = generateIssuerKeypair();
+
+  return createIssuer({
+    issuerPrivateKeyPem: issuerKeys.privateKeyPem,
+    issuerPublicKeyPem: issuerKeys.publicKeyPem,
+  });
+}
+
 describe('Tessera credential lifecycle', () => {
+  it('should require callers to provide a persistent issuer keypair', () => {
+    assert.throws(
+      () => createIssuer(),
+      /createIssuer requires issuerPrivateKeyPem and issuerPublicKeyPem/,
+    );
+  });
+
   it('should issue a credential with signed issuer and holder keys', () => {
-    const issuer = createIssuer();
+    const issuer = createTestIssuer();
 
     const { credential, identitySecret, holderSecretKey } = issuer.issue({
       tier: 1,
@@ -37,10 +55,11 @@ describe('Tessera credential lifecycle', () => {
     assert.ok(identitySecret, 'should return identity secret');
     assert.ok(holderSecretKey.includes('BEGIN PRIVATE KEY'));
     assert.equal(issuer.getMemberCount(), 1);
+    assert.ok(issuer.getRecentRoots().includes(issuer.getGroupRoot()));
   });
 
   it('should reject duplicate anchor hashes', () => {
-    const issuer = createIssuer();
+    const issuer = createTestIssuer();
     const anchorHash = 'sha256-hash-of-bank-account-002';
 
     issuer.issue({ tier: 1, jurisdiction: 'EU', anchorHash });
@@ -52,17 +71,18 @@ describe('Tessera credential lifecycle', () => {
   });
 
   it('full flow: issue → prove → verify', async () => {
-    const issuer = createIssuer();
-    const verifier = createVerifier({
-      platformId: 'test-platform',
-      minimumTier: 1,
-      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
-    });
+    const issuer = createTestIssuer();
 
     const { credential, identitySecret } = issuer.issue({
       tier: 1,
       jurisdiction: 'EU',
       anchorHash: 'sha256-hash-of-bank-account-003',
+    });
+    const verifier = createVerifier({
+      platformId: 'test-platform',
+      minimumTier: 1,
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: issuer.getRecentRoots(),
     });
 
     const proof = await prove(
@@ -83,17 +103,18 @@ describe('Tessera credential lifecycle', () => {
   });
 
   it('should reject forged credential claims even when the proof is valid', async () => {
-    const issuer = createIssuer();
-    const verifier = createVerifier({
-      platformId: 'secure-platform',
-      minimumTier: 1,
-      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
-    });
+    const issuer = createTestIssuer();
 
     const { credential, identitySecret } = issuer.issue({
       tier: 3,
       jurisdiction: 'US',
       anchorHash: 'sha256-hash-of-bank-account-004',
+    });
+    const verifier = createVerifier({
+      platformId: 'secure-platform',
+      minimumTier: 1,
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: issuer.getRecentRoots(),
     });
 
     const forgedCredential = {
@@ -121,16 +142,17 @@ describe('Tessera credential lifecycle', () => {
   });
 
   it('should reject proofs generated for a different platform', async () => {
-    const issuer = createIssuer();
-    const verifier = createVerifier({
-      platformId: 'platform-b',
-      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
-    });
+    const issuer = createTestIssuer();
 
     const { credential, identitySecret } = issuer.issue({
       tier: 1,
       jurisdiction: 'EU',
       anchorHash: 'sha256-hash-of-bank-account-005',
+    });
+    const verifier = createVerifier({
+      platformId: 'platform-b',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: issuer.getRecentRoots(),
     });
 
     const proof = await prove(
@@ -149,17 +171,18 @@ describe('Tessera credential lifecycle', () => {
   });
 
   it('should reject proof with insufficient tier', async () => {
-    const issuer = createIssuer();
-    const verifier = createVerifier({
-      platformId: 'strict-platform',
-      minimumTier: 2,
-      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
-    });
+    const issuer = createTestIssuer();
 
     const { credential, identitySecret } = issuer.issue({
       tier: 3,
       jurisdiction: 'US',
       anchorHash: 'sha256-hash-of-phone-006',
+    });
+    const verifier = createVerifier({
+      platformId: 'strict-platform',
+      minimumTier: 2,
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: issuer.getRecentRoots(),
     });
 
     const proof = await prove(
@@ -178,7 +201,7 @@ describe('Tessera credential lifecycle', () => {
   });
 
   it('should detect double-presentation via a persistent SQLite nullifier registry', async () => {
-    const issuer = createIssuer();
+    const issuer = createTestIssuer();
     const databaseDir = mkdtempSync(join(tmpdir(), 'tessera-nullifiers-'));
     const databasePath = join(databaseDir, 'registry.sqlite');
     cleanupPaths.push(databaseDir);
@@ -188,6 +211,7 @@ describe('Tessera credential lifecycle', () => {
       jurisdiction: 'EU',
       anchorHash: 'sha256-hash-of-bank-account-007',
     });
+    const trustedRoots = issuer.getRecentRoots();
 
     const proof = await prove(
       identitySecret,
@@ -199,11 +223,13 @@ describe('Tessera credential lifecycle', () => {
     const verifierA = createVerifier({
       platformId: 'platform-a',
       trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: trustedRoots,
       nullifierDbPath: databasePath,
     });
     const verifierB = createVerifier({
       platformId: 'platform-a',
       trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: trustedRoots,
       nullifierDbPath: databasePath,
     });
 
@@ -219,20 +245,23 @@ describe('Tessera credential lifecycle', () => {
   });
 
   it('should allow same credential on different platforms', async () => {
-    const issuer = createIssuer();
-    const verifierA = createVerifier({
-      platformId: 'platform-a',
-      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
-    });
-    const verifierB = createVerifier({
-      platformId: 'platform-b',
-      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
-    });
+    const issuer = createTestIssuer();
 
     const { credential, identitySecret } = issuer.issue({
       tier: 1,
       jurisdiction: 'EU',
       anchorHash: 'sha256-hash-of-bank-account-008',
+    });
+    const trustedRoots = issuer.getRecentRoots();
+    const verifierA = createVerifier({
+      platformId: 'platform-a',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: trustedRoots,
+    });
+    const verifierB = createVerifier({
+      platformId: 'platform-b',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: trustedRoots,
     });
 
     const proofA = await prove(identitySecret, issuer.getGroup(), credential, 'platform-a');
@@ -249,16 +278,17 @@ describe('Tessera credential lifecycle', () => {
   });
 
   it('should reject forged agent delegation signatures', async () => {
-    const issuer = createIssuer();
-    const verifier = createVerifier({
-      platformId: 'platform-agent',
-      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
-    });
+    const issuer = createTestIssuer();
 
     const { credential, identitySecret, holderSecretKey } = issuer.issue({
       tier: 1,
       jurisdiction: 'EU',
       anchorHash: 'sha256-hash-of-bank-account-009',
+    });
+    const verifier = createVerifier({
+      platformId: 'platform-agent',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: issuer.getRecentRoots(),
     });
 
     const validDelegation = createDelegation(holderSecretKey, credential, {
@@ -289,16 +319,17 @@ describe('Tessera credential lifecycle', () => {
   });
 
   it('should reject agent delegation scopes that exceed the parent scope', async () => {
-    const issuer = createIssuer();
-    const verifier = createVerifier({
-      platformId: 'platform-scope',
-      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
-    });
+    const issuer = createTestIssuer();
 
     const { credential, identitySecret, holderSecretKey } = issuer.issue({
       tier: 1,
       jurisdiction: 'EU',
       anchorHash: 'sha256-hash-of-bank-account-010',
+    });
+    const verifier = createVerifier({
+      platformId: 'platform-scope',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: issuer.getRecentRoots(),
     });
 
     const delegation = createDelegation(holderSecretKey, credential, {
@@ -326,16 +357,17 @@ describe('Tessera credential lifecycle', () => {
   });
 
   it('should accept valid agent delegations', async () => {
-    const issuer = createIssuer();
-    const verifier = createVerifier({
-      platformId: 'platform-valid-agent',
-      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
-    });
+    const issuer = createTestIssuer();
 
     const { credential, identitySecret, holderSecretKey } = issuer.issue({
       tier: 1,
       jurisdiction: 'EU',
       anchorHash: 'sha256-hash-of-bank-account-011',
+    });
+    const verifier = createVerifier({
+      platformId: 'platform-valid-agent',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: issuer.getRecentRoots(),
     });
 
     const delegation = createDelegation(holderSecretKey, credential, {
@@ -359,6 +391,39 @@ describe('Tessera credential lifecycle', () => {
     assert.equal(result.valid, true);
     assert.equal(result.type, 'agent');
     assert.deepEqual(result.scope, delegation.scope);
+
+    verifier.close();
+  });
+
+  it('should reject proofs generated against a rogue group root', async () => {
+    const issuer = createTestIssuer();
+
+    const { credential, identitySecret } = issuer.issue({
+      tier: 1,
+      jurisdiction: 'EU',
+      anchorHash: 'sha256-hash-of-bank-account-012',
+    });
+    const verifier = createVerifier({
+      platformId: 'platform-rogue',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: issuer.getRecentRoots(),
+    });
+
+    const rogueGroup = new Group([
+      BigInt(credential.identityCommitment),
+      BigInt(credential.identityCommitment) + 1n,
+    ]);
+    const proof = await prove(
+      identitySecret,
+      rogueGroup,
+      credential,
+      'platform-rogue',
+    );
+
+    const result = await verifier.verify(proof);
+
+    assert.equal(result.valid, false);
+    assert.match(result.error ?? '', /untrusted group root/);
 
     verifier.close();
   });

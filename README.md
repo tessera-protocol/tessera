@@ -62,10 +62,16 @@ import {
   createDelegation,
   createIssuer,
   createVerifier,
+  generateIssuerKeypair,
   prove,
 } from 'tessera-sdk';
 
-const issuer = createIssuer();
+const issuerKeys = generateIssuerKeypair();
+// Persist this keypair in your app config or secret store.
+const issuer = createIssuer({
+  issuerPrivateKeyPem: issuerKeys.privateKeyPem,
+  issuerPublicKeyPem: issuerKeys.publicKeyPem,
+});
 const { credential, identitySecret, holderSecretKey } = issuer.issue({
   tier: 1,
   jurisdiction: 'EU',
@@ -90,6 +96,7 @@ const proof = await prove(
 const verifier = createVerifier({
   platformId: 'platform-xyz',
   trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+  trustedGroupRoots: issuer.getRecentRoots(),
 });
 
 const result = await verifier.verify(proof);

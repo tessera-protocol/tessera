@@ -19,7 +19,7 @@ import type {
   VerificationResult,
   AnchorTier,
   AgentDelegation,
-  AgentScope,
+  VerifyOptions,
 } from './types.js';
 import {
   isScopeContained,
@@ -37,7 +37,9 @@ import { createNullifierRegistry } from './nullifier-registry.js';
  * import { createVerifier } from 'tessera-sdk';
  *
  * const verifier = createVerifier({
- *   platformScope: 'my-social-network',
+ *   platformId: 'my-social-network',
+ *   trustedIssuerPublicKeys: ['issuer-public-key-pem'],
+ *   trustedGroupRoots: ['current-merkle-root', 'previous-merkle-root'],
  *   minimumTier: 2,
  * });
  *
@@ -57,15 +59,20 @@ export function createVerifier(config: TesseraVerifierConfig) {
      *
      * This is the main entry point for platforms. It checks:
      * - ZK proof validity (via Semaphore)
+     * - Merkle root is trusted by this verifier
      * - Credential expiry
      * - Anchor tier meets minimum
      * - Nullifier not previously seen (Sybil prevention)
      * - Agent delegation validity (if applicable)
      */
-    async verify(proof: TesseraProof): Promise<VerificationResult> {
+    async verify(
+      proof: TesseraProof,
+      options?: VerifyOptions,
+    ): Promise<VerificationResult> {
       const isAgent = !!proof.delegation;
       const resultType = isAgent ? 'agent' as const : 'human' as const;
       const tier = proof.credential.anchor.tier;
+      const trustedRoots = options?.trustedGroupRoots ?? config.trustedGroupRoots ?? [];
 
       // Step 1: Verify the issuer signature before trusting any credential claims.
       if (
@@ -94,6 +101,16 @@ export function createVerifier(config: TesseraVerifierConfig) {
           tier,
           scope: proof.delegation?.scope ?? null,
           error: 'Proof was generated for a different platform',
+        };
+      }
+
+      if (!trustedRoots.includes(proof.semaphoreProof.merkleTreeRoot)) {
+        return {
+          valid: false,
+          type: resultType,
+          tier,
+          scope: proof.delegation?.scope ?? null,
+          error: 'Proof was generated against an untrusted group root',
         };
       }
 
