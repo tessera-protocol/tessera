@@ -3,125 +3,99 @@
 [![npm](https://img.shields.io/npm/v/@tessera-protocol/sdk)](https://www.npmjs.com/package/@tessera-protocol/sdk)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
 
-Tessera is the permission layer for AI agents.
+Tessera Guard is a permission layer for agent actions.
 
-Tessera Guard blocks sensitive agent actions unless a valid human-delegated credential authorizes them. It verifies scope, expiry, and revocation at execution time.
+Today, the live integration is OpenClaw: a real Guard plugin blocks `exec.shell` by default, allows it while a valid credential is active, allows it again on the next identical action, and blocks it again immediately after revocation.
+
+## Durable Demo Loop
+
+The current milestone proves a durable authority loop, not a one-shot approval flow:
+
+1. blocked: no credential
+2. allowed: grant `exec.shell` from `/guard`
+3. allowed: same command again, no re-approval
+4. blocked: revoke the credential, then retry
+
+This is implemented live in OpenClaw today.
+
+## Start Here
+
+- [Quickstart](./QUICKSTART.md): install the local OpenClaw Guard plugin, run `/guard`, and reproduce the durable `exec.shell` loop
+- [Security Model](./SECURITY_MODEL.md): current trust assumptions, revocation semantics, and demo limitations
+- [OpenClaw Guard package](./openclaw-guard-plugin/README.md): plugin-level details and local plugin behavior
+
+## What Works Today
+
+- OpenClaw is the first live runtime integration
+- Tessera Guard enforces a real execution-time boundary for `exec`
+- `/guard` is the beginning of a local control plane
+- local grant / revoke affects the real credential source used by the plugin
+- recent Guard decisions can be inspected from the dashboard and the plugin event log
 
 ## Why This Exists
 
-AI agents can now send messages, execute code, make purchases, and publish content. Most runtimes still rely on one of three bad patterns:
+Most agent runtimes still fall back to one of three bad patterns:
 
-- ambient authority: if the agent has a token or tool handle, it can act
-- repeated approval prompts: the human has to approve every step
-- runtime-specific permissions: every framework invents its own policy model
+- ambient authority: if the agent already has the token or tool handle, it can act
+- repeated prompts: the human has to re-approve each action, which breaks autonomy
+- runtime-specific permissions: each framework invents its own incompatible policy model
 
-What is missing is a portable way to answer, at the moment of execution:
+Tessera Guard is trying to establish a narrower primitive:
 
 - who authorized this agent?
-- what is it allowed to do?
+- what action class is it allowed to perform?
 - when does that authority expire?
-- can that authority be revoked right now?
+- can it be revoked before the next action executes?
 
-That is the narrow problem Tessera solves.
+## Observability
 
-## First Product: Tessera Guard
+The current observability surface is local, but real:
 
-Tessera Guard is the first product and the current wedge.
+- `/guard` shows runtime, agent, plugin, and credential state
+- `/guard` shows recent guarded actions and decision history
+- the event stream reflects real transitions such as blocked -> allowed -> allowed -> revoked/blocked
+- the OpenClaw Guard plugin also writes a local JSONL decision log used by the dashboard
 
-It sits between an agent runtime and sensitive tools. Before the runtime is allowed to execute a guarded action, Guard verifies:
+See the [Quickstart](./QUICKSTART.md) for the exact local flow.
 
-- the credential chain is valid
-- the issuer and delegation signatures are valid
-- the requested action is within scope
-- the credential is not expired
-- the credential has not been revoked
+## Current Scope
 
-Initial guarded action classes:
+Today:
 
-- `message.send`
-- `payment.intent`
-- `exec.shell`
-- `content.publish`
+- OpenClaw Guard
+- local durable `exec.shell` demo
+- local dashboard-backed grant / revoke flow
 
-## OpenClaw Milestone
+Later:
 
-Tessera Guard now works live in OpenClaw for `exec`.
+- broader runtime integrations
+- hosted issuer / verification infrastructure
+- richer wallet / protocol surface where it actually helps the authorization flow
 
-- no credential -> blocked
-- valid `exec.shell` credential -> allowed
-- revoked credential -> blocked again
-
-Demo artifacts live in [`openclaw-guard-plugin/demo/`](./openclaw-guard-plugin/demo/).
-## Small Example
-
-```ts
-import { createGuard } from '@tessera-protocol/openclaw';
-
-const guard = createGuard({
-  credential: process.env.TESSERA_AGENT_CREDENTIAL!,
-  trustedIssuerKeys: [process.env.TESSERA_ISSUER_PUBLIC_KEY!],
-  offlineMode: false,
-  issuerUrl: 'http://localhost:3001',
-});
-
-const result = await guard.check('email.send', {
-  recipientCount: 5,
-  recipientDomains: ['example.com'],
-});
-
-if (!result.allowed) {
-  console.error(result.reason);
-  console.error(result.suggestion);
-  return;
-}
-
-// Safe to proceed with the sensitive action.
-```
-
-## Why Agent Runtimes Need This
-
-Tessera gives runtimes and tool gateways a deterministic execution-time boundary.
-
-Instead of trusting that an agent “probably should” be allowed to act, the runtime can require proof that:
-
-- a human root credential exists
-- authority was delegated to this agent
-- the delegation covers this class of action
-- the delegation is still live
-
-That makes agent permissioning portable across runtimes, MCP servers, gateways, and platforms.
+OpenClaw is the proving ground and the wedge, not the final universe.
 
 ## Core Model
 
-- Human root credential: establishes that a human principal is eligible to delegate authority.
-- Agent identity: gives each agent its own cryptographic subject.
-- Scoped delegation: encodes what the agent may do, for how long, and under what limits.
-- Execution-time verification: checks the request when the action is about to happen.
-- Revocation: lets a human kill delegated authority fast enough to matter.
-
-## OpenClaw First, Not OpenClaw Only
-
-OpenClaw is the first integration and the fastest path to real usage, because it already exposes high-risk tool calls and an agent-centric developer audience.
-
-Tessera is not intended to stay OpenClaw-specific. The long-term direction is cross-runtime agent authorization infrastructure:
-
-- OpenClaw today
-- MCP servers and gateways next
-- broader coding agents, workflow agents, and API-facing agent platforms after that
+- human root credential
+- agent identity
+- scoped delegation
+- execution-time verification
+- revocation
 
 ## Packages
 
-- [`packages/openclaw/`](./packages/openclaw): Tessera Guard for OpenClaw
+- [`openclaw-guard-plugin/`](./openclaw-guard-plugin): local OpenClaw Guard plugin and demo assets
+- [`packages/openclaw/`](./packages/openclaw): Tessera Guard package surface for OpenClaw-related work
 - [`packages/sdk/`](./packages/sdk): core credential, delegation, and verification SDK
 - [`services/issuer/`](./services/issuer): issuer and online revocation / verification service
-- [`packages/cli-demo/`](./packages/cli-demo): protocol demo script
-- [`apps/web/`](./apps/web): demo wallet app for credentials and agent delegation
+- [`apps/web/`](./apps/web): local dashboard and demo wallet surfaces
 
 ## Links
 
+- [Quickstart](./QUICKSTART.md)
+- [Security Model](./SECURITY_MODEL.md)
 - [Whitepaper v0.6 draft](./docs/whitepaper.pdf)
 - [Landing page](./docs/index.html)
-- [OpenClaw Guard package](./packages/openclaw/README.md)
 - [SDK package](./packages/sdk/README.md)
 - [Protocol spec](./spec/v0.1/tessera-spec.md)
 - [Contributing guide](./CONTRIBUTING.md)
