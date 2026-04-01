@@ -11,8 +11,8 @@ It currently supports two action classes:
 
 Credentials are read from:
 
-- [`local-credentials.json`](/Users/guglielmoreggio/code/tessera/openclaw-guard-plugin/local-credentials.json) when present
-- otherwise [`local-credentials.example.json`](/tmp/tessera-guard-pr/openclaw-guard-plugin/local-credentials.example.json)
+- `./local-credentials.json` for live local enforcement
+- `./local-credentials.example.json` as a sample only
 
 Shape:
 
@@ -34,22 +34,23 @@ Shape:
 }
 ```
 
-`local-credentials.json` is intentionally ignored so machine-local credential state does not get committed. Copy the example file when you want to run the local demo.
+`local-credentials.json` is intentionally ignored so machine-local credential state does not get committed. The example file is for reference only and is not consulted by the live plugin at runtime.
 
 ## Install locally
 
 Use a repo-local OpenClaw home so this does not touch your main runtime profile:
 
 ```bash
-OPENCLAW_HOME=/Users/guglielmoreggio/code/tessera/.openclaw-probe-home \
-script -q /dev/null openclaw plugins install --link /Users/guglielmoreggio/code/tessera/openclaw-guard-plugin
+cd /path/to/tessera
+OPENCLAW_HOME="$PWD/.openclaw-probe-home" \
+script -q /dev/null openclaw plugins install --link "$PWD/openclaw-guard-plugin"
 ```
 
 ## Run the exec enforcement tests
 
 ```bash
-cd /Users/guglielmoreggio/code/tessera/openclaw-guard-plugin
-OPENCLAW_HOME=/Users/guglielmoreggio/code/tessera/.openclaw-probe-home node ./test-shell-exec-enforcement.js
+cd /path/to/tessera/openclaw-guard-plugin
+OPENCLAW_HOME="$(cd .. && pwd)/.openclaw-probe-home" node ./test-shell-exec-enforcement.js
 ```
 
 Expected sequence:
@@ -61,7 +62,7 @@ Expected sequence:
 ## Run the message hook test
 
 ```bash
-cd /Users/guglielmoreggio/code/tessera/openclaw-guard-plugin
+cd /path/to/tessera/openclaw-guard-plugin
 node ./test-message-hook.js
 ```
 
@@ -87,12 +88,13 @@ In the installed live runtime, this plugin maps:
 Use the repo-scoped OpenClaw home, start the gateway, then run a real agent turn for `exec`:
 
 ```bash
-OPENCLAW_HOME=/Users/guglielmoreggio/code/tessera/.openclaw-probe-home \
+cd /path/to/tessera
+OPENCLAW_HOME="$PWD/.openclaw-probe-home" \
 openclaw gateway run --allow-unconfigured --verbose
 ```
 
 ```bash
-OPENCLAW_HOME=/Users/guglielmoreggio/code/tessera/.openclaw-probe-home \
+OPENCLAW_HOME=/path/to/tessera/.openclaw-probe-home \
 openclaw agent --agent main --message "Run pwd using the exec tool now. If a tool policy blocks execution, reply with the exact denial reason and nothing else." --json
 ```
 

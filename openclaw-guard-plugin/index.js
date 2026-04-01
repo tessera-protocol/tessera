@@ -9,7 +9,7 @@ import {
 const pluginDir = path.dirname(fileURLToPath(import.meta.url));
 const logPath = path.join(pluginDir, "probe-events.jsonl");
 const credentialsPath = path.join(pluginDir, "local-credentials.json");
-const credentialsExamplePath = path.join(pluginDir, "local-credentials.example.json");
+const debugPayloadLogging = process.env.TESSERA_GUARD_DEBUG_LOG_PAYLOADS === "1";
 
 const ACTION_MAP = {
   "shell.exec": TESSERA_ACTIONS.EXEC_SHELL,
@@ -24,16 +24,12 @@ function writeEvent(record) {
 }
 
 function readCredentialStore() {
-  const activeCredentialsPath = fs.existsSync(credentialsPath)
-    ? credentialsPath
-    : credentialsExamplePath;
-
-  if (!fs.existsSync(activeCredentialsPath)) {
+  if (!fs.existsSync(credentialsPath)) {
     return { agents: {} };
   }
 
   try {
-    const parsed = JSON.parse(fs.readFileSync(activeCredentialsPath, "utf8"));
+    const parsed = JSON.parse(fs.readFileSync(credentialsPath, "utf8"));
     if (parsed && typeof parsed === "object" && parsed.agents && typeof parsed.agents === "object") {
       return parsed;
     }
@@ -49,6 +45,16 @@ function readCredentialStore() {
 
 function mapToolToAction(toolName) {
   return ACTION_MAP[toolName] ?? null;
+}
+
+function sanitizeHookContext(ctx) {
+  return {
+    agentId: ctx?.agentId ?? null,
+    sessionKey: ctx?.sessionKey ?? null,
+    sessionId: ctx?.sessionId ?? null,
+    runId: ctx?.runId ?? null,
+    toolCallId: ctx?.toolCallId ?? null
+  };
 }
 
 function buildDecision({
@@ -121,11 +127,18 @@ export default {
     });
 
     api.on("before_tool_call", async (event, ctx) => {
-      writeEvent({
+      const hookRecord = {
         hook: "before_tool_call",
-        event,
-        ctx
-      });
+        toolName: event?.toolName ?? null,
+        action: mapToolToAction(event?.toolName),
+        ...sanitizeHookContext(ctx)
+      };
+
+      writeEvent(
+        debugPayloadLogging
+          ? { ...hookRecord, event, ctx }
+          : hookRecord
+      );
 
       const action = mapToolToAction(event.toolName);
       if (!action) {
@@ -154,11 +167,19 @@ export default {
     });
 
     api.on("message_sending", async (event, ctx) => {
-      writeEvent({
+      const hookRecord = {
         hook: "message_sending",
-        event,
-        ctx
-      });
+        toolName: "message.send",
+        action: TESSERA_ACTIONS.MESSAGE_SEND,
+        channelId: ctx?.channelId ?? event?.metadata?.channelId ?? null,
+        ...sanitizeHookContext(ctx)
+      };
+
+      writeEvent(
+        debugPayloadLogging
+          ? { ...hookRecord, event, ctx }
+          : hookRecord
+      );
 
       const decision = evaluateAction({
         agentId: ctx.agentId,
