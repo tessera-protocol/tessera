@@ -68,6 +68,19 @@ type ExecApprovalsFile = {
   >;
 };
 
+type RuntimePolicySnapshotFile = {
+  version: 1;
+  agents: Record<
+    string,
+    {
+      hadToolsExec: boolean;
+      toolsExec: Record<string, unknown> | null;
+      hadExecApprovalsAgent: boolean;
+      execApprovalsAgent: Record<string, unknown> | null;
+    }
+  >;
+};
+
 const libDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(libDir, "../../../..");
 const pluginDir = path.join(repoRoot, "openclaw-guard-plugin");
@@ -76,6 +89,10 @@ const credentialsPath = path.join(pluginDir, "local-credentials.json");
 const probeLogPath = path.join(pluginDir, "probe-events.jsonl");
 const openclawConfigPath = path.join(openclawHomeDir, "openclaw.json");
 const execApprovalsPath = path.join(openclawHomeDir, "exec-approvals.json");
+const runtimePolicySnapshotPath = path.join(
+  openclawHomeDir,
+  "tessera-guard-runtime-policy.json",
+);
 const DEMO_CREDENTIAL_LIFETIME_SECONDS = 15 * 60;
 
 function readJsonFile<T>(filePath: string, fallback: T): T {
@@ -111,6 +128,17 @@ function readExecApprovalsFile(): ExecApprovalsFile {
 
 function writeExecApprovalsFile(value: ExecApprovalsFile) {
   writeJsonFile(execApprovalsPath, value);
+}
+
+function readRuntimePolicySnapshotFile(): RuntimePolicySnapshotFile {
+  return readJsonFile<RuntimePolicySnapshotFile>(runtimePolicySnapshotPath, {
+    version: 1,
+    agents: {},
+  });
+}
+
+function writeRuntimePolicySnapshotFile(value: RuntimePolicySnapshotFile) {
+  writeJsonFile(runtimePolicySnapshotPath, value);
 }
 
 function isDurableExecApprovalsEnabled(file: ExecApprovalsFile, agentId = "main") {
@@ -151,6 +179,21 @@ function ensureDurableExecPolicy(agentId = "main") {
   const agents = { ...(file.agents ?? {}) };
   const current = agents[agentId] ?? {};
   const config = readJsonFile<Record<string, unknown>>(openclawConfigPath, {});
+  const snapshotFile = readRuntimePolicySnapshotFile();
+  const tools = (config.tools as Record<string, unknown> | undefined) ?? {};
+  const exec = (tools.exec as Record<string, unknown> | undefined) ?? {};
+
+  if (!snapshotFile.agents[agentId]) {
+    snapshotFile.agents[agentId] = {
+      hadToolsExec: Object.prototype.hasOwnProperty.call(tools, "exec"),
+      toolsExec: Object.prototype.hasOwnProperty.call(tools, "exec") ? exec : null,
+      hadExecApprovalsAgent: Object.prototype.hasOwnProperty.call(agents, agentId),
+      execApprovalsAgent: Object.prototype.hasOwnProperty.call(agents, agentId)
+        ? current
+        : null,
+    };
+    writeRuntimePolicySnapshotFile(snapshotFile);
+  }
 
   agents[agentId] = {
     ...current,
@@ -165,6 +208,72 @@ function ensureDurableExecPolicy(agentId = "main") {
   });
 
   ensureRuntimeExecPolicy(config);
+}
+
+function setRuntimeExecPolicy(
+  config: Record<string, unknown>,
+  policy: Record<string, unknown> | null,
+) {
+  const tools = { ...(((config.tools as Record<string, unknown> | undefined) ?? {})) };
+
+  if (policy) {
+    tools.exec = policy;
+  } else {
+    delete tools.exec;
+  }
+
+  writeJsonFile(openclawConfigPath, {
+    ...config,
+    tools,
+  });
+}
+
+function restoreBaselineExecPolicy(agentId = "main") {
+  const config = readJsonFile<Record<string, unknown>>(openclawConfigPath, {});
+  const snapshotFile = readRuntimePolicySnapshotFile();
+  const snapshot = snapshotFile.agents[agentId];
+  const execApprovals = readExecApprovalsFile();
+  const agents = { ...(execApprovals.agents ?? {}) };
+
+  if (snapshot) {
+    if (snapshot.hadExecApprovalsAgent && snapshot.execApprovalsAgent) {
+      agents[agentId] = snapshot.execApprovalsAgent;
+    } else {
+      delete agents[agentId];
+    }
+
+    writeExecApprovalsFile({
+      version: 1,
+      defaults: execApprovals.defaults,
+      agents,
+    });
+
+    setRuntimeExecPolicy(
+      config,
+      snapshot.hadToolsExec ? snapshot.toolsExec : null,
+    );
+
+    delete snapshotFile.agents[agentId];
+    writeRuntimePolicySnapshotFile(snapshotFile);
+    return;
+  }
+
+  agents[agentId] = {
+    ...(agents[agentId] ?? {}),
+    security: "deny",
+    ask: "on-miss",
+  };
+
+  writeExecApprovalsFile({
+    version: 1,
+    defaults: execApprovals.defaults,
+    agents,
+  });
+
+  setRuntimeExecPolicy(config, {
+    security: "deny",
+    ask: "on-miss",
+  });
 }
 
 function readRuntimeMetadata() {
@@ -292,6 +401,8 @@ export function revokeDemoCredential(agentId = "main") {
     writeCredentialStore(store);
   }
 
+  restoreBaselineExecPolicy(agentId);
+
   return readGuardControlPlaneState();
 }
 
@@ -299,5 +410,6 @@ export function clearDemoCredential(agentId = "main") {
   const store = readCredentialStore();
   delete store.agents[agentId];
   writeCredentialStore(store);
+  restoreBaselineExecPolicy(agentId);
   return readGuardControlPlaneState();
 }
