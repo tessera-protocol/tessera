@@ -10,18 +10,17 @@
 
 ## 1. Overview
 
-Tessera is an open protocol for issuing privacy-preserving identity credentials to humans and their autonomous agents. It anchors digital identity to real-world financial verification (open banking KYC), produces portable W3C Verifiable Credentials with zero-knowledge proofs, and defines a delegation model for extending trust from humans to AI agents.
+Tessera is an open protocol for execution-time authorization of AI agents. It defines a human root credential, an agent delegation model, and a verification path that lets runtimes and platforms check who authorized an agent, what it may do, when that authority expires, and whether it has been revoked.
 
 ### 1.1 Design Goals
 
 | Property | Description |
 |----------|-------------|
-| **Sybil-resistant** | One real human = one credential. Duplicate issuance is detectable without revealing identity. |
-| **Privacy-preserving** | No PII is shared with verifying platforms. Proofs are zero-knowledge. |
-| **Agent-native** | Delegation to autonomous agents is a first-class protocol primitive. |
-| **Portable** | Credentials work across platforms without re-verification. |
-| **Non-biometric** | No iris scans, fingerprints, or facial recognition. |
-| **No cryptocurrency** | No token, wallet, or blockchain required for basic usage. |
+| **Execution-time** | Sensitive actions are checked when they execute, not inferred from ambient access. |
+| **Scoped** | Delegation defines exactly what an agent may do and under what limits. |
+| **Revocable** | Delegated authority can be invalidated fast enough to work as a kill switch. |
+| **Portable** | The authorization model works across runtimes, gateways, and platforms. |
+| **Privacy-preserving** | Verifiers should learn only what they need to authorize the action. |
 | **Open** | Protocol spec is CC BY 4.0. Reference implementation is Apache 2.0. |
 
 ### 1.2 Threat Model
@@ -34,7 +33,7 @@ Tessera defends against the following attack classes:
 - **Linkability** — Correlating a user's activity across platforms
 - **Replay attacks** — Reusing a credential presentation
 
-Tessera does **not** claim to prevent misuse by verified humans. The optional deposit mechanism (§4.4) creates economic accountability without requiring identity disclosure.
+Tessera does **not** claim to prevent misuse by legitimately authorized humans. Its role is narrower: make delegated agent authority explicit, bounded, and auditable.
 
 ## 2. Architecture
 

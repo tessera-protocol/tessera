@@ -2,6 +2,8 @@
 
 Thank you for your interest in Tessera. This project is in its earliest stages and we welcome contributions of all kinds — code, protocol design feedback, security review, documentation, and testing.
 
+Tessera is currently focused on one narrow problem: execution-time authorization for sensitive AI agent actions. The first product surface is Tessera Guard.
+
 ## How to Contribute
 
 ### Reporting Issues
@@ -35,16 +37,15 @@ npm test
 - TypeScript with strict mode enabled
 - Use `npm run lint` before submitting
 - Write tests for new functionality
-- Keep dependencies minimal — every dependency is an attack surface for an identity protocol
+- Keep dependencies minimal — every dependency is an attack surface for runtime authorization infrastructure
 
 ## Areas Where Help Is Needed
 
-- **ZK cryptography** — Proof system selection and circuit design
-- **W3C Verifiable Credentials** — VC issuance and verification implementation
-- **Open banking** — Plaid/TrueLayer integration, multi-jurisdiction support
-- **Agent frameworks** — Integration examples for MCP, LangChain, and similar
-- **Security review** — Threat modelling and adversarial analysis
-- **Documentation** — Guides, tutorials, diagrams
+- **Agent runtimes** — Guard integrations for OpenClaw, MCP, coding agents, and gateways
+- **Authorization policy design** — Scope matching, action classification, and revocation semantics
+- **Security review** — Threat modelling and adversarial analysis for delegated agent authority
+- **Issuer service** — Online verification, revocation, and runtime-facing policy endpoints
+- **Developer docs** — Guides, tutorials, and integration examples for runtimes
 
 ## Code of Conduct
 

@@ -1,8 +1,13 @@
 # @tessera-protocol/sdk
 
-Reference SDK for the Tessera protocol.
+Core SDK for Tessera Guard.
 
-It provides the core issuer, prover, verifier, and delegation utilities for Tessera credentials built on Semaphore and Ed25519.
+Tessera is the permission layer for AI agents. This package provides the credential, delegation, proof, and verification primitives behind Guard:
+
+- human root credentials
+- agent identity and scoped delegation
+- execution-time verification
+- nullifier and revocation-aware checks
 
 Requirements:
 
@@ -13,6 +18,14 @@ Install:
 ```bash
 npm install @tessera-protocol/sdk
 ```
+
+The main building blocks are:
+
+- `generateIssuerKeypair()`
+- `createIssuer()`
+- `createDelegation()`
+- `prove()`
+- `createVerifier()`
 
 Repository:
 
