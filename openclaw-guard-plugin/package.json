@@ -1,0 +1,15 @@
+{
+  "name": "tessera-guard-local",
+  "version": "0.0.0-local",
+  "private": true,
+  "type": "module",
+  "description": "Local Tessera Guard OpenClaw plugin for exec tool enforcement",
+  "scripts": {
+    "test:local": "node ./test-shell-exec-enforcement.js"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}
