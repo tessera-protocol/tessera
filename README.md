@@ -11,6 +11,16 @@ Tessera is an open protocol for human and agent identity: it anchors a privacy-p
 npm install @tessera-protocol/sdk
 ```
 
+## OpenClaw Milestone
+
+Tessera Guard now works live in OpenClaw for `exec`.
+
+- no credential -> blocked
+- valid `exec.shell` credential -> allowed
+- revoked credential -> blocked again
+
+Demo artifacts live in [`openclaw-guard-plugin/demo/`](./openclaw-guard-plugin/demo/).
+
 ## Four-Layer Architecture
 
 - Anchor: establishes root trust from bank KYC and other real-world verification methods.
