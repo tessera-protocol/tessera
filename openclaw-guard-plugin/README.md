@@ -11,7 +11,8 @@ It currently supports two action classes:
 
 Credentials are read from:
 
-- [`local-credentials.json`](/Users/guglielmoreggio/code/tessera/openclaw-guard-plugin/local-credentials.json)
+- [`local-credentials.json`](/Users/guglielmoreggio/code/tessera/openclaw-guard-plugin/local-credentials.json) when present
+- otherwise [`local-credentials.example.json`](/tmp/tessera-guard-pr/openclaw-guard-plugin/local-credentials.example.json)
 
 Shape:
 
@@ -32,6 +33,8 @@ Shape:
   }
 }
 ```
+
+`local-credentials.json` is intentionally ignored so machine-local credential state does not get committed. Copy the example file when you want to run the local demo.
 
 ## Install locally
 

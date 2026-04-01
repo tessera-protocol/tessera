@@ -9,6 +9,7 @@ import {
 const pluginDir = path.dirname(fileURLToPath(import.meta.url));
 const logPath = path.join(pluginDir, "probe-events.jsonl");
 const credentialsPath = path.join(pluginDir, "local-credentials.json");
+const credentialsExamplePath = path.join(pluginDir, "local-credentials.example.json");
 
 const ACTION_MAP = {
   "shell.exec": TESSERA_ACTIONS.EXEC_SHELL,
@@ -23,12 +24,16 @@ function writeEvent(record) {
 }
 
 function readCredentialStore() {
-  if (!fs.existsSync(credentialsPath)) {
+  const activeCredentialsPath = fs.existsSync(credentialsPath)
+    ? credentialsPath
+    : credentialsExamplePath;
+
+  if (!fs.existsSync(activeCredentialsPath)) {
     return { agents: {} };
   }
 
   try {
-    const parsed = JSON.parse(fs.readFileSync(credentialsPath, "utf8"));
+    const parsed = JSON.parse(fs.readFileSync(activeCredentialsPath, "utf8"));
     if (parsed && typeof parsed === "object" && parsed.agents && typeof parsed.agents === "object") {
       return parsed;
     }
