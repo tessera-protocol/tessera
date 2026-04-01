@@ -1,13 +1,16 @@
 /**
  * Tessera SDK
  *
- * An open-source SDK for issuing and verifying Tessera identity credentials.
- * Built on Semaphore for the zero-knowledge layer.
+ * Core SDK for Tessera Guard.
+ *
+ * Tessera is the permission layer for AI agents. This package provides the
+ * credential, delegation, proof, and verification primitives that runtimes and
+ * gateways use to enforce execution-time authorization for sensitive actions.
  *
  * @example
  * ```typescript
  * // === Issuer side (your server) ===
- * import { createIssuer, createVerifier, generateIssuerKeypair, prove } from 'tessera-sdk';
+ * import { createIssuer, createVerifier, generateIssuerKeypair, prove } from '@tessera-protocol/sdk';
  * const issuerKeys = generateIssuerKeypair();
  * const issuer = createIssuer({
  *   issuerPrivateKeyPem: issuerKeys.privateKeyPem,

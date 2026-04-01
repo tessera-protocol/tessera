@@ -1,7 +1,7 @@
 {
   "name": "@tessera-protocol/openclaw",
   "version": "0.1.0",
-  "description": "Tessera Guard middleware for OpenClaw agent actions",
+  "description": "Tessera Guard for OpenClaw: execution-time authorization for sensitive agent actions",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,6 +13,17 @@
   "engines": {
     "node": ">=22.5"
   },
+  "keywords": [
+    "ai-agents",
+    "authorization",
+    "openclaw",
+    "guardrails",
+    "runtime-security",
+    "agent-security",
+    "revocation",
+    "delegation"
+  ],
+  "homepage": "https://github.com/tessera-protocol/tessera/tree/main/packages/openclaw",
   "dependencies": {
     "@tessera-protocol/sdk": "file:../sdk"
   },
