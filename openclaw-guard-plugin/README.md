@@ -2,9 +2,10 @@
 
 This is the smallest real Tessera Guard runtime integration for OpenClaw.
 
-It proves one thing:
+It currently supports two action classes:
 
-- a real OpenClaw plugin can block live shell execution at execution time unless a local Tessera credential authorizes `exec.shell`
+- live `exec` / Tessera `exec.shell`
+- initial `message_sending` / Tessera `message.send`
 
 ## Local credential store
 
@@ -25,7 +26,7 @@ Shape:
       "expiresAt": 1775053200,
       "revoked": false,
       "scope": {
-        "actions": ["exec.shell"]
+        "actions": ["exec.shell", "message.send"]
       }
     }
   }
@@ -41,7 +42,7 @@ OPENCLAW_HOME=/Users/guglielmoreggio/code/tessera/.openclaw-probe-home \
 script -q /dev/null openclaw plugins install --link /Users/guglielmoreggio/code/tessera/openclaw-guard-plugin
 ```
 
-## Run the real enforcement test
+## Run the exec enforcement tests
 
 ```bash
 cd /Users/guglielmoreggio/code/tessera/openclaw-guard-plugin
@@ -53,6 +54,19 @@ Expected sequence:
 1. no credential -> blocked
 2. valid `exec.shell` credential -> allowed
 3. revoked credential -> blocked
+
+## Run the message hook test
+
+```bash
+cd /Users/guglielmoreggio/code/tessera/openclaw-guard-plugin
+node ./test-message-hook.js
+```
+
+Expected sequence:
+
+1. no credential -> cancelled
+2. valid `message.send` credential -> allowed
+3. revoked credential -> cancelled
 
 ## Interception point
 
@@ -67,7 +81,7 @@ In the installed live runtime, this plugin maps:
 
 ## Live local session
 
-Use the repo-scoped OpenClaw home, start the gateway, then run a real agent turn:
+Use the repo-scoped OpenClaw home, start the gateway, then run a real agent turn for `exec`:
 
 ```bash
 OPENCLAW_HOME=/Users/guglielmoreggio/code/tessera/.openclaw-probe-home \
@@ -85,10 +99,18 @@ The live path now proves:
 2. valid `exec.shell` credential for `main` -> allowed
 3. revoked credential for `main` -> blocked
 
+## Message path status
+
+The plugin now enforces `message.send` at the real `message_sending` hook boundary, but full live end-to-end delivery is still blocked in this local setup because the repo-scoped OpenClaw profile does not have a working outbound channel account. The direct CLI path currently fails early with:
+
+- `Error: Channel is unavailable: telegram`
+
+So `message.send` is validated against the real OpenClaw hook contract, but not yet through a successful live outbound channel send.
+
 ## What is still stubbed
 
 - local JSON credentials only
 - no issuer service
 - no VC/ZK verification
-- no message/email enforcement yet
+- no working local outbound channel account for a fully live `message.send` demo yet
 - no persistent revocation registry beyond the `revoked` field in the local credential file
