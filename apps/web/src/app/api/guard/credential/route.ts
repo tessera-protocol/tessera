@@ -1,0 +1,32 @@
+import { NextRequest, NextResponse } from "next/server";
+import {
+  clearDemoCredential,
+  grantDemoCredential,
+  revokeDemoCredential,
+} from "@/lib/guard-control-plane";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function POST(request: NextRequest) {
+  const body = (await request.json().catch(() => ({}))) as {
+    action?: "grant" | "revoke" | "clear";
+    agentId?: string;
+  };
+
+  const agentId = body.agentId || "main";
+
+  switch (body.action) {
+    case "grant":
+      return NextResponse.json(grantDemoCredential(agentId));
+    case "revoke":
+      return NextResponse.json(revokeDemoCredential(agentId));
+    case "clear":
+      return NextResponse.json(clearDemoCredential(agentId));
+    default:
+      return NextResponse.json(
+        { error: "Unknown credential action" },
+        { status: 400 },
+      );
+  }
+}
