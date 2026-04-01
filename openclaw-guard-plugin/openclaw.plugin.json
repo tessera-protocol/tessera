@@ -1,0 +1,11 @@
+{
+  "id": "tessera-guard-local",
+  "name": "Tessera Guard Local",
+  "description": "Local Tessera Guard enforcement for OpenClaw exec and message actions.",
+  "version": "0.0.0-local",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

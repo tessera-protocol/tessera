@@ -43,6 +43,15 @@ Initial guarded action classes:
 - `exec.shell`
 - `content.publish`
 
+## OpenClaw Milestone
+
+Tessera Guard now works live in OpenClaw for `exec`.
+
+- no credential -> blocked
+- valid `exec.shell` credential -> allowed
+- revoked credential -> blocked again
+
+Demo artifacts live in [`openclaw-guard-plugin/demo/`](./openclaw-guard-plugin/demo/).
 ## Small Example
 
 ```ts

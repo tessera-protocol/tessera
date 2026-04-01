@@ -8,3 +8,7 @@ build/
 coverage/
 .nyc_output/
 *.tsbuildinfo
+.openclaw-probe-home/
+docs/*.aux
+docs/*.out
+docs/*.toc
