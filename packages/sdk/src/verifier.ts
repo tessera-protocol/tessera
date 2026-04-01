@@ -34,7 +34,7 @@ import { createNullifierRegistry } from './nullifier-registry.js';
  *
  * @example
  * ```typescript
- * import { createVerifier } from 'tessera-sdk';
+ * import { createVerifier } from '@tessera-protocol/sdk';
  *
  * const verifier = createVerifier({
  *   platformId: 'my-social-network',

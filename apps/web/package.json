@@ -2,6 +2,7 @@
   "name": "web",
   "version": "0.1.0",
   "private": true,
+  "description": "Tessera demo wallet app for human root credentials and agent delegation",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

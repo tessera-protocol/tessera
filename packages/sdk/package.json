@@ -1,7 +1,7 @@
 {
   "name": "@tessera-protocol/sdk",
   "version": "0.1.0-alpha.1",
-  "description": "SDK for issuing and verifying Tessera identity credentials",
+  "description": "Core SDK for Tessera Guard: human root credentials, scoped agent delegation, execution-time verification, and revocation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -16,13 +16,14 @@
     "clean": "rm -rf dist"
   },
   "keywords": [
-    "identity",
-    "verification",
-    "verifiable-credentials",
-    "zero-knowledge",
-    "sybil-resistance",
-    "agent-delegation",
-    "semaphore"
+    "ai-agents",
+    "authorization",
+    "agent-security",
+    "delegation",
+    "revocation",
+    "runtime-security",
+    "mcp",
+    "openclaw"
   ],
   "author": "Guglielmo Reggio",
   "license": "Apache-2.0",
@@ -30,6 +31,7 @@
     "type": "git",
     "url": "https://github.com/tessera-protocol/tessera"
   },
+  "homepage": "https://github.com/tessera-protocol/tessera",
   "publishConfig": {
     "access": "public"
   },
