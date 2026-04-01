@@ -2,6 +2,7 @@
 
 import "./globals.css";
 import { DM_Mono, DM_Sans, Fraunces } from "next/font/google";
+import { usePathname } from "next/navigation";
 import { BottomNav } from "@/components/bottom-nav";
 import { TesseraProvider } from "@/lib/tessera-context";
 
@@ -28,6 +29,9 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const isGuardRoute = pathname.startsWith("/guard");
+
   return (
     <html
       lang="en"
@@ -46,11 +50,19 @@ export default function RootLayout({
         <meta name="theme-color" content="#0F1117" />
         <title>Tessera</title>
       </head>
-      <body className="min-h-screen bg-surface-base pb-20 font-sans text-content-primary">
-        <TesseraProvider>
-          <main className="mx-auto max-w-[430px] px-5 pt-3">{children}</main>
-          <BottomNav />
-        </TesseraProvider>
+      <body
+        className={`min-h-screen bg-surface-base font-sans text-content-primary ${
+          isGuardRoute ? "pb-8" : "pb-20"
+        }`}
+      >
+        {isGuardRoute ? (
+          <main className="mx-auto max-w-5xl px-5 pt-4 md:px-8">{children}</main>
+        ) : (
+          <TesseraProvider>
+            <main className="mx-auto max-w-[430px] px-5 pt-3">{children}</main>
+            <BottomNav />
+          </TesseraProvider>
+        )}
       </body>
     </html>
   );
