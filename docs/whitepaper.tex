@@ -63,7 +63,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 \renewcommand{\headrulewidth}{0pt}
-\fancyfoot[C]{\small\color{gray} Tessera Protocol --- Working Draft v0.4 --- March 2026 \hfill \thepage}
+\fancyfoot[C]{\small\color{gray} Tessera Protocol --- Working Draft v0.5 --- March 2026 \hfill \thepage}
 
 \setlist[itemize]{topsep=0.3em, itemsep=0.15em, parsep=0pt}
 \setlist[enumerate]{topsep=0.3em, itemsep=0.15em, parsep=0pt}
@@ -80,7 +80,7 @@
 \begin{center}
   {\Huge\bfseries TESSERA}\\[0.8em]
   {\Large Identity for Humans and Their Agents}\\[2.5em]
-  {\large Working Draft v0.4}\\[1.2em]
+  {\large Working Draft v0.5}\\[1.2em]
   {\large Guglielmo Reggio}\\[0.6em]
   {\normalsize March 2026}\\[4em]
   \rule{8cm}{0.4pt}\\[1.5em]
@@ -107,7 +107,7 @@ The protocol anchors identity to real-world financial verification (bank KYC via
 
 As AI agents proliferate---browsing, transacting, communicating, and making decisions autonomously---the internet faces three converging crises. Platforms cannot distinguish humans from bots. Agents cannot prove who authorised them or what they are permitted to do. And AI-generated content is flooding every medium with no reliable way to verify human authorship. Tessera addresses all three with a single primitive: a privacy-preserving credential that blocks unauthorised action by default.
 
-Tessera is not a cryptocurrency, does not require biometric scanning, and does not store personal data. It is an open standard delivered through a consumer app, an open-source SDK, and agent framework integrations that make permission the default, not the exception.
+Tessera is not a cryptocurrency, does not require biometric scanning, and minimises personal data by design. It is an open standard built on W3C Verifiable Credentials (Data Model 2.0), Semaphore zero-knowledge proofs (Groth16), and OID4VC presentation protocols, delivered through a consumer app, an open-source SDK, and agent framework integrations that make permission the default, not the exception.
 \end{abstract}
 
 
@@ -274,7 +274,66 @@ Platforms and services integrate Tessera through an open-source SDK. The verific
 
 
 % ═══════════════════════════════════════
-% 4. THE TESSERA APP
+% 4. STANDARDS ALIGNMENT
+% ═══════════════════════════════════════
+\section{Standards Alignment}
+
+Tessera is designed to interoperate with the emerging digital identity stack rather than compete with it. The protocol builds on established standards and prepares compatibility paths with evolving regulatory frameworks.
+
+\subsection{Core Standards}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Standard} & \textbf{How Tessera uses it} \\
+\midrule
+W3C VC Data Model 2.0 & Tessera credentials conform to the VC Data Model 2.0, which reached W3C Recommendation status in May 2025. This ensures credential portability across any verifier that supports the standard. \\
+Semaphore V4 / Groth16 & Anonymous group membership proofs with nullifier-based double-signal prevention. Semaphore V4 is maintained by Privacy \& Scaling Explorations (Ethereum Foundation) with a completed trusted setup (400+ participants) and production deployment through World (17.9M verified users). Groth16 produces 192-byte proofs with verification in under 10\,ms. \\
+Ed25519 & All delegation signatures use Ed25519 via the Web Crypto API where available. Browser-generated keys use the \texttt{extractable: false} flag to prevent accidental exfiltration. \\
+OID4VC & The credential presentation layer is designed for compatibility with OpenID for Verifiable Credentials (OID4VCI / OID4VP), which is becoming the implementation centre of gravity for VC ecosystems including the EU Digital Identity Wallet. \\
+\bottomrule
+\end{tabularx}
+\caption{Core standards used by Tessera.}
+\end{table}
+
+\subsection{Regulatory Compatibility}
+
+Tessera is designed with awareness of the emerging regulatory landscape for digital identity and AI agents, though no dedicated statutory regime for AI-agent identity currently exists.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Framework} & \textbf{Tessera alignment} \\
+\midrule
+EU eIDAS 2.0 & The European Digital Identity Wallet framework entered into force in 2024, with member states required to offer at least one wallet by end of 2026. EUDI architecture references W3C VC Data Model 2.0 and SD-JWT VC formats. Tessera credentials are designed for future interoperability with EUDI-compatible wallets, adding agent delegation on top of the human credential. \\
+UK DVS Trust Framework & The UK Digital Verification Services trust framework 1.0 was announced in March 2026, with a live certification register. Tessera's architecture is compatible with DVS certification requirements, providing a path to regulatory credibility for UK deployments. \\
+EU AI Act (Article 50) & Transparency obligations for AI-generated content become applicable in August 2026. Tessera's human provenance watermark and agent credential system provide infrastructure for content labelling compliance. \\
+GDPR / UK Data Protection & Tessera's use of zero-knowledge proofs, nullifiers, and hashed identifiers supports data minimisation and security by design. However, pseudonymised data may still constitute personal data under ICO and EDPB guidance where re-identification remains reasonably possible. Tessera does not claim exemption from data protection law; it claims strong compliance posture through architectural minimisation. \\
+\bottomrule
+\end{tabularx}
+\caption{Regulatory framework compatibility.}
+\end{table}
+
+Tessera does not directly access payment-account data or initiate payments, which is intended to avoid the need for Account Information Service Provider (AISP) or Payment Initiation Service Provider (PISP) authorisation under UK/EU payment services regulations. Instead, Tessera consumes verification results from already-authorised open banking providers such as TrueLayer. This architectural choice is deliberate and should be validated by legal counsel before production deployment.
+
+\subsection{Standards Participation}
+
+Tessera intends to participate in the following standards bodies and working groups as the protocol matures:
+
+\begin{itemize}
+  \item \textbf{OpenID Foundation AIIM Community Group} --- created in 2025 to address AI identity management, and the most directly relevant forum for Tessera's agent delegation model.
+  \item \textbf{NIST AI Agent Standards Initiative} --- launched in February 2026 with explicit focus on agent security and identity.
+  \item \textbf{W3C VC Working Group} --- active through 2028, providing the credential substrate Tessera builds on.
+  \item \textbf{FIDO Alliance Digital Credentials Working Group} --- launched December 2025, relevant where passkeys and verifiable credentials converge.
+\end{itemize}
+
+
+% ═══════════════════════════════════════
+% 5. THE TESSERA APP
 % ═══════════════════════════════════════
 \section{The Tessera App}
 
@@ -461,6 +520,8 @@ Second, stamps generate revenue that scales with agent activity rather than user
 
 Stamps are optional. Platforms choose whether to require them and can set their own thresholds. The protocol defines the stamp mechanism; platforms define the policy.
 
+Direct per-action card charges at these amounts are below the minimum transaction thresholds of major payment processors (for example, Stripe's minimum charge is \pounds 0.30 GBP). In practice, stamps will be aggregated into periodic billing cycles or prepaid balance drawdowns rather than charged individually. The economic friction effect is preserved; the payment-rail constraint is respected.
+
 \subsection{Why the Model Compounds}
 
 The three layers reinforce each other. Verification fees monetise trust at the platform edge. Transaction stamps monetise action inside agent workflows. The human dividend turns verification from a pure cost centre into a shared upside mechanism. This creates a flywheel: more useful agents increase platform demand for verification; more platform demand increases protocol revenue; more revenue increases the dividend; a larger dividend increases the incentive for real humans to verify and remain active in the ecosystem.
@@ -508,6 +569,8 @@ Google / Apple SSO & Medium & Yes & No & No & No \\
 Worldcoin / World ID & High & No & No & No & Partial \\
 Gitcoin Passport & Medium & Yes & No & No & Yes \\
 C2PA / Content Cred. & N/A & Yes & No & Partial & Yes \\
+Microsoft Entra Agent ID & N/A & Yes & Native & No & No \\
+Okta / Auth0 for Agents & N/A & Yes & Native & No & No \\
 \textbf{Tessera} & \textbf{High} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} \\
 \bottomrule
 \end{tabularx}
@@ -542,7 +605,9 @@ Governments & Nothing without legal process directed at the user's bank & --- \\
 \caption{Privacy guarantees by party.}
 \end{table}
 
-Tessera's privacy model is strictly stronger than existing verification systems (phone verification, social login, document KYC), all of which expose significant PII to verifying parties. The content provenance system adds a new privacy guarantee: creators can prove human authorship without revealing their identity, and multiple works by the same creator cannot be linked.
+Tessera's privacy model is designed to be strictly stronger than existing verification systems (phone verification, social login, document KYC), all of which expose significant PII to verifying parties. The content provenance system adds a new privacy guarantee: creators can prove human authorship without revealing their identity, and multiple works by the same creator cannot be linked.
+
+\textbf{Data protection note.} Tessera's use of hashed identifiers, nullifiers, and zero-knowledge proofs supports data minimisation by design. However, pseudonymised data may still constitute personal data under UK ICO and EU EDPB guidance where re-identification remains reasonably possible through auxiliary information. Tessera does not claim exemption from GDPR or the UK Data Protection Act; it claims a strong compliance posture through architectural data minimisation, purpose limitation, and the absence of stored plaintext PII.
 
 Users who provide recovery contacts accept a limited reduction in anonymity: the issuer can route a verification code to the correct email address when recovery is initiated, but cannot read the email address from the stored hash. This is an opt-in convenience feature, not a protocol requirement.
 
@@ -627,11 +692,11 @@ Tessera does not claim to prevent all misuse by verified humans. A real person c
 \textbf{Question} & \textbf{Current Thinking} \\
 \midrule
 Cross-anchor deduplication & A person with accounts at multiple banks could obtain multiple credentials. Mitigation requires a shared identifier across anchors, which varies by jurisdiction. \\
-Nullifier decentralisation & Centralised registry for launch. On-chain migration planned for v1.0 with public commitment to decentralisation timeline. \\
-Graph-weighted trust & Optimal weighting function for cross-cluster vs.\ intra-cluster vouches. Needs simulation and adversarial testing. \\
-Content watermark format & Embedding mechanism varies by medium (metadata fields for audio, EXIF for images, headers for text). Standard format needed. \\
-Digital ID certification & UK DIATF and EU eIDAS 2.0 certification paths for real-world identity acceptance. Requires compliance work. \\
-Agent credential standards & No existing standard for agent authorisation credentials. Tessera may propose a W3C VC extension for agentic scope encoding. \\
+Nullifier registry scaling & SQLite is suitable for local, edge, and low-to-medium traffic deployments. A global nullifier authority with high write concurrency will require migration to a multi-writer store (e.g.\ PostgreSQL). Bitstring status lists (W3C) are the preferred revocation pattern at scale. \\
+Mobile key storage & iOS Secure Enclave supports P-256 but not Ed25519. Hardware-backed Ed25519 on iOS requires storing a wrapped key in Keychain rather than native enclave operations. Some authentication surfaces may adopt WebAuthn/passkeys (P-256) for maximum hardware assurance. \\
+Micropayment batching & Agent transaction stamps at \pounds 0.001--0.01 are below card-rail minimums. Implementation requires prepaid balances, periodic billing, or streaming payment abstractions rather than direct per-action charges. \\
+Digital ID certification & UK DIATF and EU eIDAS 2.0 certification paths for real-world identity acceptance. DVS certification takes approximately 1--2 weeks once engaged with a conformity assessment body. \\
+Agent credential standards & No existing standard for agent authorisation credentials. The OpenID Foundation AIIM Community Group and NIST AI Agent Standards Initiative are the most relevant forums. Tessera may propose a W3C VC extension for agentic scope encoding. \\
 \bottomrule
 \end{tabularx}
 \caption{Open design questions.}
@@ -653,9 +718,9 @@ Agent credential standards & No existing standard for agent authorisation creden
 Phase 0---Foundation (complete) & Protocol specification and reference implementation. SDK with Semaphore ZK proofs, Ed25519 signatures, and SQLite nullifier registry. Published as \texttt{@tessera-protocol/sdk} on npm. Credential wallet app (web + iOS). CLI demo. Issuer service. 20-page whitepaper. \\
 Phase 1---OpenClaw integration & Tessera Guard middleware for OpenClaw. Permission enforcement on email, payments, shell, and content actions. Agent-side permission legibility. Revocation integration. First real users from the OpenClaw community. \\
 Phase 2---Bank anchor & TrueLayer open banking sandbox integration for Tier~1 credentials. App onboarding flow with recovery contacts. Real bank-verified credentials replacing demo mode. \\
-Phase 3---Ecosystem expansion & MCP server for Claude Code and Claude Desktop. Tessera-signed skill manifests for OpenClaw. Micropayment infrastructure (agent transaction stamps). Human dividend tracking. \\
+Phase 3---Ecosystem expansion & MCP server for Claude Code and Claude Desktop. Tessera-signed skill manifests for OpenClaw. Micropayment infrastructure (agent transaction stamps). Human dividend tracking. Migrate nullifier registry to PostgreSQL for production scale. Adopt W3C Bitstring Status List for credential revocation. \\
 Phase 4---Scale & Full W3C VC compliance. Content watermark SDK. Apple Wallet pass. Multi-issuer support. Enterprise tier. Security audit. \\
-Phase 5---Institutional & UK DIATF certification exploration. Nullifier registry decentralisation. Foundation-style governance. \\
+Phase 5---Institutional & UK DIATF certification exploration. Nullifier registry decentralisation. Foundation-style governance. Join OIDF AIIM Community Group and NIST AI Agent Standards Initiative. Pursue UK DVS trust framework certification. \\
 \bottomrule
 \end{tabularx}
 \caption{Implementation roadmap.}
@@ -721,6 +786,12 @@ Tessera is in its earliest stage. We are actively seeking:
   2024.
   \url{https://www.w3.org/TR/vc-data-model-2.0/}
 
+\bibitem{eidas}
+  European Commission,
+  \emph{European Digital Identity Framework (eIDAS 2.0)},
+  2024.
+  \url{https://digital-strategy.ec.europa.eu/en/policies/eidas-regulation}
+
 \bibitem{w3c-did}
   W3C,
   \emph{Decentralized Identifiers (DIDs) v1.0},
@@ -762,7 +833,7 @@ Tessera is in its earliest stage. We are actively seeking:
 \vfill
 \begin{center}
   \small\color{gray}
-  Tessera Protocol Working Draft v0.4 --- March 2026 --- Licensed under CC BY 4.0
+  Tessera Protocol Working Draft v0.5 --- March 2026 --- Licensed under CC BY 4.0
 \end{center}
 
 \end{document}
