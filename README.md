@@ -52,7 +52,6 @@ Tessera Guard now works live in OpenClaw for `exec`.
 - revoked credential -> blocked again
 
 Demo artifacts live in [`openclaw-guard-plugin/demo/`](./openclaw-guard-plugin/demo/).
-
 ## Small Example
 
 ```ts

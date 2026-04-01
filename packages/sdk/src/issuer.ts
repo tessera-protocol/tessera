@@ -37,7 +37,7 @@ const DEFAULT_RECENT_ROOTS_LIMIT = 10;
  *
  * @example
  * ```typescript
- * import { createIssuer, generateIssuerKeypair } from 'tessera-sdk';
+ * import { createIssuer, generateIssuerKeypair } from '@tessera-protocol/sdk';
  *
  * const issuerKeys = generateIssuerKeypair();
  * const issuer = createIssuer({

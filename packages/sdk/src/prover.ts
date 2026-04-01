@@ -33,7 +33,7 @@ import type {
  *
  * @example
  * ```typescript
- * import { prove } from 'tessera-sdk';
+ * import { prove } from '@tessera-protocol/sdk';
  *
  * const proof = await prove(
  *   myIdentitySecret,

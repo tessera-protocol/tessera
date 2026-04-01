@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "description": "CLI demo of Tessera credential issuance, delegation, proof generation, and verification",
   "bin": {
     "tessera-demo": "./src/demo.ts"
   },
@@ -10,7 +11,7 @@
     "demo": "tsx src/demo.ts"
   },
   "dependencies": {
-    "tessera-sdk": "file:../sdk"
+    "@tessera-protocol/sdk": "file:../sdk"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

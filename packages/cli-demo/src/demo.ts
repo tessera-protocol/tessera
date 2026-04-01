@@ -10,7 +10,7 @@ import {
   createVerifier,
   generateIssuerKeypair,
   prove,
-} from 'tessera-sdk';
+} from '@tessera-protocol/sdk';
 
 const PURPLE = '\x1b[35m';
 const GREEN = '\x1b[32m';
@@ -47,8 +47,8 @@ async function main() {
 function printHeader() {
   process.stdout.write('tessera');
   process.stdout.write(`${PURPLE}.${RESET}`);
-  process.stdout.write(' protocol demo\n');
-  console.log(`${DIM}Real Semaphore proofs, Ed25519 signatures, and SQLite nullifier checks.${RESET}\n`);
+  process.stdout.write(' guard protocol demo\n');
+  console.log(`${DIM}Human root credentials, scoped delegation, proof generation, and execution-time verification.${RESET}\n`);
 }
 
 async function runFullLifecycle(baseDir: string) {

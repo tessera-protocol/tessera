@@ -1,70 +1,68 @@
 # Examples
 
-## Basic Platform Integration
+These examples are intentionally narrow: Tessera is the permission layer for AI agents, and the first product surface is execution-time authorization for sensitive agent actions.
 
-This example shows how a platform would verify a Tessera credential
-presented by a user or agent.
+## Guarded Runtime Check
 
-```typescript
-import { createVerifier, type TesseraHumanCredential } from 'tessera-sdk';
+This is the smallest useful shape of a Tessera integration.
 
-// 1. Create a verifier with your platform's requirements
-const verifier = createVerifier({
-  nullifierRegistryUrl: 'https://registry.tessera.example',
-  minimumTier: 2,      // Require at least card verification
-  timeoutMs: 3000,     // 3 second timeout for registry checks
+```ts
+import { createGuard } from '@tessera-protocol/openclaw';
+
+const guard = createGuard({
+  credential: process.env.TESSERA_AGENT_CREDENTIAL!,
+  trustedIssuerKeys: [process.env.TESSERA_ISSUER_PUBLIC_KEY!],
+  offlineMode: false,
+  issuerUrl: 'http://localhost:3001',
 });
 
-// 2. When a user/agent presents a credential, verify it
-async function handleCredentialPresentation(credential: TesseraHumanCredential) {
-  const result = await verifier.verify(credential);
+const result = await guard.check('payment.intent', {
+  amount: 42,
+  currency: 'EUR',
+  category: 'saas',
+});
 
-  if (!result.valid) {
-    console.error(`Verification failed: ${result.error}`);
-    return;
-  }
+if (!result.allowed) {
+  console.error(result.reason);
+  console.error(result.suggestion);
+  return;
+}
 
-  if (result.type === 'human') {
-    console.log(`Verified human (Tier ${result.tier})`);
-    // Grant access
-  }
+// Safe to continue with the guarded action.
+```
 
-  if (result.type === 'agent') {
-    console.log(`Verified agent with scope:`, result.scope);
-    // Check scope before allowing actions
-    if (result.scope?.canPost) {
-      // Allow posting
-    }
-  }
+## Platform-Side Verification
+
+If you are building your own runtime, gateway, or verifier surface directly on the SDK:
+
+```ts
+import { createVerifier } from '@tessera-protocol/sdk';
+
+const verifier = createVerifier({
+  platformId: 'payments-gateway',
+  trustedIssuerPublicKeys: [issuerPublicKey],
+  trustedGroupRoots: [currentRoot],
+});
+
+const result = await verifier.verify(proof);
+
+if (!result.valid) {
+  console.error(result.error);
+  return;
+}
+
+if (result.type === 'agent') {
+  console.log(result.scope);
 }
 ```
 
-## Agent Scope Checking
+## Scope Matching
 
-```typescript
-import { type VerificationResult } from 'tessera-sdk';
+Tessera is useful when the runtime can map a real action to a clear policy check:
 
-function canAgentPerformAction(
-  result: VerificationResult,
-  action: 'post' | 'transact',
-  amount?: number,
-): boolean {
-  if (!result.valid || result.type !== 'agent' || !result.scope) {
-    return false;
-  }
+- `message.send`
+- `payment.intent`
+- `exec.shell`
+- `content.publish`
 
-  if (action === 'post') {
-    return result.scope.canPost === true;
-  }
-
-  if (action === 'transact') {
-    if (!result.scope.canTransact) return false;
-    if (amount && result.scope.maxTransactionValue) {
-      return amount <= result.scope.maxTransactionValue;
-    }
-    return true;
-  }
-
-  return false;
-}
-```
+The runtime should evaluate that mapping at execution time, not trust ambient access or stale login state.

@@ -2,7 +2,7 @@
   "name": "tessera-issuer-service",
   "version": "0.1.0",
   "private": true,
-  "description": "Trusted Tessera issuer service",
+  "description": "Issuer and online verification service for Tessera Guard credentials and revocation checks",
   "type": "module",
   "engines": {
     "node": ">=22.5"
