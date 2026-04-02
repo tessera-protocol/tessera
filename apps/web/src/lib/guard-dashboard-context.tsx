@@ -73,7 +73,9 @@ type GuardDashboardContextValue = GuardDashboardState & {
   loading: boolean;
   refresh: () => Promise<void>;
   scanForLocalAgents: () => Promise<void>;
-  grantDemoCredential: () => Promise<void>;
+  grantExecCredential: () => Promise<void>;
+  grantMessageCredential: () => Promise<void>;
+  grantCombinedCredential: () => Promise<void>;
   revokeDemoCredential: () => Promise<void>;
   clearDemoCredential: () => Promise<void>;
 };
@@ -129,13 +131,16 @@ async function scanState() {
   return (await response.json()) as GuardDashboardState;
 }
 
-async function postCredentialAction(action: "grant" | "revoke" | "clear") {
+async function postCredentialAction(
+  action: "grant" | "revoke" | "clear",
+  actions?: string[],
+) {
   const response = await fetch("/api/guard/credential", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ action }),
+    body: JSON.stringify({ action, actions }),
   });
 
   if (!response.ok) {
@@ -226,10 +231,26 @@ export function GuardDashboardProvider({ children }: { children: ReactNode }) {
           setLoading(false);
         }
       },
-      grantDemoCredential: async () => {
+      grantExecCredential: async () => {
         setLoading(true);
         try {
-          setState(await postCredentialAction("grant"));
+          setState(await postCredentialAction("grant", ["exec.shell"]));
+        } finally {
+          setLoading(false);
+        }
+      },
+      grantMessageCredential: async () => {
+        setLoading(true);
+        try {
+          setState(await postCredentialAction("grant", ["message.send"]));
+        } finally {
+          setLoading(false);
+        }
+      },
+      grantCombinedCredential: async () => {
+        setLoading(true);
+        try {
+          setState(await postCredentialAction("grant", ["exec.shell", "message.send"]));
         } finally {
           setLoading(false);
         }
