@@ -1,6 +1,7 @@
 export const TESSERA_ACTIONS = {
   EXEC_SHELL: "exec.shell",
-  MESSAGE_SEND: "message.send"
+  MESSAGE_SEND: "message.send",
+  CODE_WRITE: "code.write",
 };
 
 const SUPPORTED_ACTIONS = new Set(Object.values(TESSERA_ACTIONS));

@@ -17,6 +17,8 @@ export type GuardConnectionStatus =
   | "runtime_reachable"
   | "error";
 export type GuardPluginStatus = "plugin_loaded" | "plugin_missing" | "unknown";
+export type GuardPluginTrustStatus = "trusted_only" | "untrusted_plugins_detected";
+export type GuardAuditIntegrityStatus = "empty" | "legacy" | "verified" | "broken";
 
 export type GuardRuntimeRecord = {
   agentId: string;
@@ -33,7 +35,25 @@ export type GuardScanRecord = {
   configFound: boolean;
   runtimeReachable: boolean;
   pluginStatus: GuardPluginStatus;
+  pluginTrustStatus: GuardPluginTrustStatus;
   attachedAgentId: string | null;
+  reason: string | null;
+};
+
+export type GuardPluginTrustRecord = {
+  trustStatus: GuardPluginTrustStatus;
+  expectedPlugins: string[];
+  allowedPlugins: string[];
+  unexpectedPlugins: string[];
+};
+
+export type GuardAuditRecord = {
+  integrity: GuardAuditIntegrityStatus;
+  totalEvents: number;
+  verifiedEvents: number;
+  invalidEvents: number;
+  lastHash: string | null;
+  lastSeq: number;
   reason: string | null;
 };
 
@@ -58,11 +78,14 @@ export type GuardActionRecord = {
   timestamp: number;
   runtime: string;
   agentId: string;
+  evidenceId: string;
 };
 
 type GuardDashboardState = {
   scan: GuardScanRecord;
   runtime: GuardRuntimeRecord;
+  pluginTrust: GuardPluginTrustRecord;
+  audit: GuardAuditRecord;
   credential: GuardCredentialRecord | null;
   credentialStatus: GuardCredentialStatus;
   credentialStoreError: string | null;
@@ -73,9 +96,7 @@ type GuardDashboardContextValue = GuardDashboardState & {
   loading: boolean;
   refresh: () => Promise<void>;
   scanForLocalAgents: () => Promise<void>;
-  grantExecCredential: () => Promise<void>;
-  grantMessageCredential: () => Promise<void>;
-  grantCombinedCredential: () => Promise<void>;
+  grantDemoCredential: () => Promise<void>;
   revokeDemoCredential: () => Promise<void>;
   clearDemoCredential: () => Promise<void>;
 };
@@ -86,6 +107,7 @@ const defaultState: GuardDashboardState = {
     configFound: false,
     runtimeReachable: false,
     pluginStatus: "unknown",
+    pluginTrustStatus: "trusted_only",
     attachedAgentId: null,
     reason: "No local OpenClaw runtime attached.",
   },
@@ -97,6 +119,21 @@ const defaultState: GuardDashboardState = {
     connected: false,
     pluginLoaded: false,
     durableExecPolicy: false,
+  },
+  pluginTrust: {
+    trustStatus: "trusted_only",
+    expectedPlugins: ["tessera-guard-local"],
+    allowedPlugins: [],
+    unexpectedPlugins: [],
+  },
+  audit: {
+    integrity: "empty",
+    totalEvents: 0,
+    verifiedEvents: 0,
+    invalidEvents: 0,
+    lastHash: null,
+    lastSeq: 0,
+    reason: null,
   },
   credential: null,
   credentialStatus: "none",
@@ -131,16 +168,13 @@ async function scanState() {
   return (await response.json()) as GuardDashboardState;
 }
 
-async function postCredentialAction(
-  action: "grant" | "revoke" | "clear",
-  actions?: string[],
-) {
+async function postCredentialAction(action: "grant" | "revoke" | "clear") {
   const response = await fetch("/api/guard/credential", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ action, actions }),
+    body: JSON.stringify({ action }),
   });
 
   if (!response.ok) {
@@ -231,26 +265,10 @@ export function GuardDashboardProvider({ children }: { children: ReactNode }) {
           setLoading(false);
         }
       },
-      grantExecCredential: async () => {
+      grantDemoCredential: async () => {
         setLoading(true);
         try {
-          setState(await postCredentialAction("grant", ["exec.shell"]));
-        } finally {
-          setLoading(false);
-        }
-      },
-      grantMessageCredential: async () => {
-        setLoading(true);
-        try {
-          setState(await postCredentialAction("grant", ["message.send"]));
-        } finally {
-          setLoading(false);
-        }
-      },
-      grantCombinedCredential: async () => {
-        setLoading(true);
-        try {
-          setState(await postCredentialAction("grant", ["exec.shell", "message.send"]));
+          setState(await postCredentialAction("grant"));
         } finally {
           setLoading(false);
         }

@@ -5,20 +5,7 @@
 
 Tessera Guard is a permission layer for agent actions.
 
-Today, the live integration is OpenClaw: a real Guard plugin blocks `exec.shell` by default, allows it while a valid credential is active, allows it again on the next identical action, and blocks it again immediately after revocation. The same Guard model now also covers `message.send` at the real hook boundary.
-
-## Fastest Path
-
-From the repo root:
-
-```bash
-bash ./scripts/demo-guard --fresh
-```
-
-Then use:
-
-- [Quickstart](./QUICKSTART.md) for the exact blocked / allowed / revoked checks
-- [Security Model](./SECURITY_MODEL.md) for the current trust assumptions and scope limits
+Today, the live integration is OpenClaw: a real Guard plugin blocks `exec.shell` by default, allows it while a valid credential is active, allows it again on the next identical action, and blocks it again immediately after revocation.
 
 ## Durable Demo Loop
 
@@ -33,7 +20,6 @@ This is implemented live in OpenClaw today.
 
 ## Start Here
 
-- Fast path: `bash ./scripts/demo-guard`
 - [Quickstart](./QUICKSTART.md): install the local OpenClaw Guard plugin, run `/guard`, and reproduce the durable `exec.shell` loop
 - [Security Model](./SECURITY_MODEL.md): current trust assumptions, revocation semantics, and demo limitations
 - [OpenClaw Guard package](./openclaw-guard-plugin/README.md): plugin-level details and local plugin behavior
@@ -41,8 +27,7 @@ This is implemented live in OpenClaw today.
 ## What Works Today
 
 - OpenClaw is the first live runtime integration
-- Tessera Guard enforces a real execution-time boundary for `exec`
-- Tessera Guard also enforces `message.send` at the real hook boundary
+- Tessera Guard enforces real execution-time boundaries for `exec.shell` and mutation-class tool calls (for example `apply_patch`)
 - `/guard` is the beginning of a local control plane
 - local grant / revoke affects the real credential source used by the plugin
 - recent Guard decisions can be inspected from the dashboard and the plugin event log
@@ -69,7 +54,9 @@ The current observability surface is local, but real:
 - `/guard` shows runtime, agent, plugin, and credential state
 - `/guard` shows recent guarded actions and decision history
 - the event stream reflects real transitions such as blocked -> allowed -> allowed -> revoked/blocked
-- the OpenClaw Guard plugin also writes a local JSONL decision log used by the dashboard
+- the OpenClaw Guard plugin writes a local JSONL decision log with hash-chained events used by the dashboard
+
+The dashboard write path and the issuer service are demo-only local control surfaces. They must stay on loopback unless real auth is added.
 
 See the [Quickstart](./QUICKSTART.md) for the exact local flow.
 
@@ -79,7 +66,7 @@ Today:
 
 - OpenClaw Guard
 - local durable `exec.shell` demo
-- `message.send` hook-boundary enforcement with the same scoped grant / revoke model
+- local `code.write`/mutation guard at the same `before_tool_call` boundary
 - local dashboard-backed grant / revoke flow
 
 Later:

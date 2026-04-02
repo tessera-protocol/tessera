@@ -1,0 +1,7 @@
+{
+  "name": "tessera-repo",
+  "private": true,
+  "scripts": {
+    "test:hardening": "npm --prefix apps/web run test:hardening && npm --prefix services/issuer run test:hardening && npm --prefix openclaw-guard-plugin run test:hardening"
+  }
+}
