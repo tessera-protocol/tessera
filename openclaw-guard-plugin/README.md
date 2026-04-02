@@ -2,9 +2,10 @@
 
 This is the smallest real Tessera Guard runtime integration for OpenClaw.
 
-It currently supports two action classes:
+It currently supports three action classes:
 
 - live `exec` / Tessera `exec.shell`
+- mutation tool guarding / Tessera `code.write` (for example `apply_patch`)
 - initial `message_sending` / Tessera `message.send`
 
 ## Local credential store
@@ -27,7 +28,7 @@ Shape:
       "expiresAt": 1775053200,
       "revoked": false,
       "scope": {
-        "actions": ["exec.shell", "message.send"]
+        "actions": ["exec.shell", "message.send", "code.write"]
       }
     }
   }
@@ -82,6 +83,8 @@ In the installed live runtime, this plugin maps:
 
 - OpenClaw tool `exec` (and the hook-runner alias `shell.exec`)
 - to Tessera action `exec.shell`
+- OpenClaw mutation tools such as `apply_patch`
+- to Tessera action `code.write`
 
 ## Live local session
 
@@ -111,6 +114,19 @@ The plugin now enforces `message.send` at the real `message_sending` hook bounda
 - `Error: Channel is unavailable: telegram`
 
 So `message.send` is validated against the real OpenClaw hook contract, but not yet through a successful live outbound channel send.
+
+## Hardening regression tests
+
+```bash
+cd /Users/guglielmoreggio/code/tessera/openclaw-guard-plugin
+npm run test:hardening
+```
+
+This covers:
+
+1. `before_tool_call` deny/allow/deny for `apply_patch` based on `code.write` scope
+2. `message_sending` deny/allow behavior for `message.send`
+3. hash-chained local decision log continuity
 
 ## What is still stubbed
 

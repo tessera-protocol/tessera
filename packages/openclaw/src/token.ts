@@ -54,6 +54,18 @@ export function parseAgentCredential(token: string): ParsedAgentCredential {
 }
 
 export function getDelegationId(
+  delegation: Pick<AgentDelegation, 'parentCommitment' | 'agentName' | 'issuedAt' | 'expiresAt'> & {
+    id?: string;
+  },
+): string {
+  if (typeof delegation.id === 'string' && delegation.id.length > 0) {
+    return delegation.id;
+  }
+
+  return getLegacyDelegationId(delegation);
+}
+
+export function getLegacyDelegationId(
   delegation: Pick<AgentDelegation, 'parentCommitment' | 'agentName' | 'issuedAt' | 'expiresAt'>,
 ): string {
   return createHash('sha256')
@@ -117,6 +129,11 @@ export function isActionAllowedByScope(
         return { allowed: false, reason: 'Credential does not allow shell execution' };
       }
       return { allowed: true };
+    case 'code.write':
+      if (!canCodeWrite(scope)) {
+        return { allowed: false, reason: 'Credential does not allow code or file mutation' };
+      }
+      return { allowed: true };
     default:
       return { allowed: false, reason: `Action "${action}" is not recognised by Tessera Guard` };
   }
@@ -145,6 +162,15 @@ export function canExecShell(scope: AgentScope): boolean {
     );
 }
 
+export function canCodeWrite(scope: AgentScope): boolean {
+  return Boolean(
+    (scope as Record<string, unknown>).canCodeWrite === true ||
+    (scope as Record<string, unknown>).codeWrite === true ||
+    (scope as Record<string, unknown>).write === true ||
+    (scope as Record<string, unknown>).canExecShell === true,
+  );
+}
+
 export function describeScope(scope: AgentScope): string[] {
   const descriptions: string[] = [];
 
@@ -161,6 +187,10 @@ export function describeScope(scope: AgentScope): string[] {
 
   if (canExecShell(scope)) {
     descriptions.push('run shell commands');
+  }
+
+  if (canCodeWrite(scope)) {
+    descriptions.push('mutate files in the workspace');
   }
 
   if (!descriptions.length) {

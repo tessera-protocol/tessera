@@ -7,7 +7,8 @@
   "scripts": {
     "test:hardening": "node --experimental-strip-types --test ./test-hardening.js",
     "test:local": "node ./test-shell-exec-enforcement.js",
-    "test:message": "node ./test-message-hook.js"
+    "test:message": "node ./test-message-hook.js",
+    "test:hardening": "node --test ./hardening.boundaries.test.js"
   },
   "openclaw": {
     "extensions": [

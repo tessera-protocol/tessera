@@ -9,12 +9,17 @@ export const ACTION_MAP: Record<string, string> = {
   'shopify.create_order': 'payment.intent',
   'shell.exec': 'exec.shell',
   'terminal.run': 'exec.shell',
+  'apply_patch': 'code.write',
+  'file.write': 'code.write',
+  'fs.write': 'code.write',
+  'workspace.write': 'code.write',
   'browser.purchase': 'payment.intent',
   'twitter.post': 'content.publish',
   'github.create_issue': 'content.publish',
   'message.send': 'message.send',
   'payment.intent': 'payment.intent',
   'exec.shell': 'exec.shell',
+  'code.write': 'code.write',
   'content.publish': 'content.publish',
 };
 

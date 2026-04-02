@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import {
   evaluateLocalGuard,
@@ -13,14 +14,98 @@ const debugPayloadLogging = process.env.TESSERA_GUARD_DEBUG_LOG_PAYLOADS === "1"
 
 const ACTION_MAP = {
   "shell.exec": TESSERA_ACTIONS.EXEC_SHELL,
-  exec: TESSERA_ACTIONS.EXEC_SHELL
+  exec: TESSERA_ACTIONS.EXEC_SHELL,
+  apply_patch: TESSERA_ACTIONS.CODE_WRITE,
+  "file.write": TESSERA_ACTIONS.CODE_WRITE,
+  "fs.write": TESSERA_ACTIONS.CODE_WRITE,
+  "workspace.write": TESSERA_ACTIONS.CODE_WRITE
 };
 
+let eventChainState = null;
+
+function initializeEventChainState() {
+  if (eventChainState) {
+    return eventChainState;
+  }
+
+  const initial = {
+    seq: 0,
+    hash: null
+  };
+
+  if (!fs.existsSync(logPath)) {
+    eventChainState = initial;
+    return eventChainState;
+  }
+
+  try {
+    const lines = fs
+      .readFileSync(logPath, "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const tail = lines.at(-1);
+    if (!tail) {
+      eventChainState = initial;
+      return eventChainState;
+    }
+    const parsed = JSON.parse(tail);
+    eventChainState = {
+      seq: typeof parsed.seq === "number" ? parsed.seq : 0,
+      hash: typeof parsed.hash === "string" ? parsed.hash : null
+    };
+    return eventChainState;
+  } catch {
+    eventChainState = initial;
+    return eventChainState;
+  }
+}
+
+function computeDecisionHash(input) {
+  const normalized = JSON.stringify({
+    seq: input.seq,
+    prevHash: input.prevHash,
+    ts: input.ts,
+    hook: input.hook,
+    action: input.action ?? null,
+    allowed: input.allowed ?? null,
+    reason: input.reason ?? null,
+    message: input.message ?? null,
+    agentId: input.agentId ?? null,
+    toolName: input.toolName ?? null,
+    credentialId: input.credentialId ?? null
+  });
+  return crypto.createHash("sha256").update(normalized, "utf8").digest("hex");
+}
+
 function writeEvent(record) {
-  fs.appendFileSync(logPath, `${JSON.stringify({
-    ts: new Date().toISOString(),
-    ...record
-  })}\n`, "utf8");
+  try {
+    const chain = initializeEventChainState();
+    const seq = chain.seq + 1;
+    const ts = new Date().toISOString();
+    const prevHash = chain.hash;
+    const hook = typeof record.hook === "string" ? record.hook : "event";
+    const hash = computeDecisionHash({
+      seq,
+      prevHash,
+      ts,
+      hook,
+      ...record
+    });
+    const entry = {
+      seq,
+      prevHash,
+      hash,
+      ts,
+      hook,
+      ...record
+    };
+
+    fs.appendFileSync(logPath, `${JSON.stringify(entry)}\n`, "utf8");
+    eventChainState = { seq, hash };
+  } catch (error) {
+    process.stderr.write(`[tessera-guard] failed to append audit event: ${String(error)}\n`);
+  }
 }
 
 function readCredentialStore() {
@@ -145,11 +230,29 @@ export default {
         return;
       }
 
-      const decision = evaluateAction({
-        agentId: ctx.agentId,
-        action,
-        actionLabel: event.toolName ?? "tool"
-      });
+      let decision;
+      try {
+        decision = evaluateAction({
+          agentId: ctx.agentId,
+          action,
+          actionLabel: event.toolName ?? "tool"
+        });
+      } catch (error) {
+        decision = {
+          allowed: false,
+          reason: "GUARD_EVALUATION_FAILED",
+          message: `Tessera Guard could not evaluate ${event.toolName ?? "tool"} and failed closed.`,
+          action,
+          credentialId: undefined
+        };
+        writeEvent({
+          hook: "guard_error",
+          agentId: ctx.agentId,
+          toolName: event.toolName,
+          action,
+          error: String(error)
+        });
+      }
 
       writeEvent(buildDecision({
         agentId: ctx.agentId,
@@ -181,11 +284,29 @@ export default {
           : hookRecord
       );
 
-      const decision = evaluateAction({
-        agentId: ctx.agentId,
-        action: TESSERA_ACTIONS.MESSAGE_SEND,
-        actionLabel: "message.send"
-      });
+      let decision;
+      try {
+        decision = evaluateAction({
+          agentId: ctx.agentId,
+          action: TESSERA_ACTIONS.MESSAGE_SEND,
+          actionLabel: "message.send"
+        });
+      } catch (error) {
+        decision = {
+          allowed: false,
+          reason: "GUARD_EVALUATION_FAILED",
+          message: "Tessera Guard failed while validating outbound message.send and denied the send.",
+          action: TESSERA_ACTIONS.MESSAGE_SEND,
+          credentialId: undefined
+        };
+        writeEvent({
+          hook: "guard_error",
+          agentId: ctx.agentId,
+          toolName: "message.send",
+          action: TESSERA_ACTIONS.MESSAGE_SEND,
+          error: String(error)
+        });
+      }
 
       writeEvent(buildDecision({
         agentId: ctx.agentId,

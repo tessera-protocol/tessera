@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 export type GuardCredentialStatus = "none" | "valid" | "revoked" | "expired";
@@ -11,6 +12,8 @@ export type GuardConnectionStatus =
   | "runtime_reachable"
   | "error";
 export type GuardPluginStatus = "plugin_loaded" | "plugin_missing" | "unknown";
+export type GuardPluginTrustStatus = "trusted_only" | "untrusted_plugins_detected";
+export type GuardAuditIntegrityStatus = "empty" | "legacy" | "verified" | "broken";
 
 export type GuardRuntimeRecord = {
   agentId: string;
@@ -27,7 +30,25 @@ export type GuardScanRecord = {
   configFound: boolean;
   runtimeReachable: boolean;
   pluginStatus: GuardPluginStatus;
+  pluginTrustStatus: GuardPluginTrustStatus;
   attachedAgentId: string | null;
+  reason: string | null;
+};
+
+export type GuardPluginTrustRecord = {
+  trustStatus: GuardPluginTrustStatus;
+  expectedPlugins: string[];
+  allowedPlugins: string[];
+  unexpectedPlugins: string[];
+};
+
+export type GuardAuditRecord = {
+  integrity: GuardAuditIntegrityStatus;
+  totalEvents: number;
+  verifiedEvents: number;
+  invalidEvents: number;
+  lastHash: string | null;
+  lastSeq: number;
   reason: string | null;
 };
 
@@ -52,11 +73,14 @@ export type GuardActionRecord = {
   timestamp: number;
   runtime: string;
   agentId: string;
+  evidenceId: string;
 };
 
 export type GuardControlPlaneState = {
   scan: GuardScanRecord;
   runtime: GuardRuntimeRecord;
+  pluginTrust: GuardPluginTrustRecord;
+  audit: GuardAuditRecord;
   credential: GuardCredentialRecord | null;
   credentialStatus: GuardCredentialStatus;
   credentialStoreError: string | null;
@@ -104,21 +128,71 @@ type RuntimePolicySnapshotFile = {
   >;
 };
 
+type GuardControlPlanePaths = {
+  repoRoot: string;
+  pluginDir: string;
+  openclawHomeDir: string;
+  credentialsPath: string;
+  probeLogPath: string;
+  openclawConfigPath: string;
+  execApprovalsPath: string;
+  runtimePolicySnapshotPath: string;
+};
+
 const libDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(libDir, "../../../..");
-const pluginDir = path.join(repoRoot, "openclaw-guard-plugin");
-const openclawHomeDir = path.join(repoRoot, ".openclaw-probe-home", ".openclaw");
-const credentialsPath = path.join(pluginDir, "local-credentials.json");
-const probeLogPath = path.join(pluginDir, "probe-events.jsonl");
-const openclawConfigPath = path.join(openclawHomeDir, "openclaw.json");
-const execApprovalsPath = path.join(openclawHomeDir, "exec-approvals.json");
-const runtimePolicySnapshotPath = path.join(
-  openclawHomeDir,
-  "tessera-guard-runtime-policy.json",
-);
+const defaultRepoRoot = path.resolve(libDir, "../../../..");
 const DEMO_CREDENTIAL_LIFETIME_SECONDS = 15 * 60;
 const EXEC_ACTION = "exec.shell";
 const MESSAGE_ACTION = "message.send";
+const CODE_WRITE_ACTION = "code.write";
+const TRUSTED_DEMO_PLUGINS = ["tessera-guard-local"] as const;
+
+function getGuardControlPlanePaths(): GuardControlPlanePaths {
+  const repoRoot = resolveRepoRoot();
+  const pluginDir =
+    process.env.TESSERA_GUARD_PLUGIN_DIR ?? path.join(repoRoot, "openclaw-guard-plugin");
+  const openclawHomeDir =
+    process.env.TESSERA_OPENCLAW_HOME_DIR ??
+    path.join(repoRoot, ".openclaw-probe-home", ".openclaw");
+
+  return {
+    repoRoot,
+    pluginDir,
+    openclawHomeDir,
+    credentialsPath: path.join(pluginDir, "local-credentials.json"),
+    probeLogPath: path.join(pluginDir, "probe-events.jsonl"),
+    openclawConfigPath: path.join(openclawHomeDir, "openclaw.json"),
+    execApprovalsPath: path.join(openclawHomeDir, "exec-approvals.json"),
+    runtimePolicySnapshotPath: path.join(
+      openclawHomeDir,
+      "tessera-guard-runtime-policy.json",
+    ),
+  };
+}
+
+function resolveRepoRoot() {
+  if (process.env.TESSERA_REPO_ROOT) {
+    return process.env.TESSERA_REPO_ROOT;
+  }
+
+  const candidates = [
+    path.resolve(process.cwd(), "../.."),
+    process.cwd(),
+    defaultRepoRoot,
+    path.resolve(defaultRepoRoot, ".."),
+  ];
+
+  for (const candidate of candidates) {
+    if (
+      fs.existsSync(path.join(candidate, "openclaw-guard-plugin")) &&
+      fs.existsSync(path.join(candidate, "apps", "web"))
+    ) {
+      return candidate;
+    }
+  }
+
+  return defaultRepoRoot;
+}
 
 function readJsonFile<T>(filePath: string, fallback: T): T {
   if (!fs.existsSync(filePath)) {
@@ -133,14 +207,17 @@ function readJsonFile<T>(filePath: string, fallback: T): T {
 }
 
 function writeJsonFile(filePath: string, value: unknown) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 function readCredentialStore(): CredentialStore {
+  const { credentialsPath } = getGuardControlPlanePaths();
   return readJsonFile<CredentialStore>(credentialsPath, { agents: {} });
 }
 
 function readCredentialStoreState() {
+  const { credentialsPath } = getGuardControlPlanePaths();
   if (!fs.existsSync(credentialsPath)) {
     return {
       store: { agents: {} } as CredentialStore,
@@ -175,10 +252,12 @@ function readCredentialStoreState() {
 }
 
 function writeCredentialStore(value: CredentialStore) {
+  const { credentialsPath } = getGuardControlPlanePaths();
   writeJsonFile(credentialsPath, value);
 }
 
 function readExecApprovalsFile(): ExecApprovalsFile {
+  const { execApprovalsPath } = getGuardControlPlanePaths();
   return readJsonFile<ExecApprovalsFile>(execApprovalsPath, {
     version: 1,
     agents: {},
@@ -186,10 +265,12 @@ function readExecApprovalsFile(): ExecApprovalsFile {
 }
 
 function writeExecApprovalsFile(value: ExecApprovalsFile) {
+  const { execApprovalsPath } = getGuardControlPlanePaths();
   writeJsonFile(execApprovalsPath, value);
 }
 
 function readRuntimePolicySnapshotFile(): RuntimePolicySnapshotFile {
+  const { runtimePolicySnapshotPath } = getGuardControlPlanePaths();
   return readJsonFile<RuntimePolicySnapshotFile>(runtimePolicySnapshotPath, {
     version: 1,
     agents: {},
@@ -197,6 +278,7 @@ function readRuntimePolicySnapshotFile(): RuntimePolicySnapshotFile {
 }
 
 function writeRuntimePolicySnapshotFile(value: RuntimePolicySnapshotFile) {
+  const { runtimePolicySnapshotPath } = getGuardControlPlanePaths();
   writeJsonFile(runtimePolicySnapshotPath, value);
 }
 
@@ -217,6 +299,7 @@ function isRuntimeExecPolicyEnabled(config: Record<string, unknown>) {
 }
 
 function ensureRuntimeExecPolicy(config: Record<string, unknown>) {
+  const { openclawConfigPath } = getGuardControlPlanePaths();
   const tools = (config.tools as Record<string, unknown> | undefined) ?? {};
   const exec = (tools.exec as Record<string, unknown> | undefined) ?? {};
 
@@ -256,14 +339,13 @@ function snapshotRuntimePolicy(agentId = "main") {
     return;
   }
 
+  const { openclawConfigPath } = getGuardControlPlanePaths();
   const config = readJsonFile<Record<string, unknown>>(openclawConfigPath, {});
   const tools = (config.tools as Record<string, unknown> | undefined) ?? {};
   const exec = (tools.exec as Record<string, unknown> | undefined) ?? undefined;
   const execApprovals = readExecApprovalsFile();
   const execApprovalsAgent = execApprovals.agents?.[agentId];
 
-  // Heal old leaked demo state on main: if the repo-scoped runtime is already
-  // in the widened full/off mode with no prior snapshot, do not preserve it.
   if (isPermissiveExecState(exec, execApprovalsAgent)) {
     return;
   }
@@ -277,6 +359,7 @@ function snapshotRuntimePolicy(agentId = "main") {
 }
 
 function restoreRuntimeExecPolicy(agentId = "main") {
+  const { openclawConfigPath } = getGuardControlPlanePaths();
   const snapshot = readRuntimePolicySnapshotFile();
   const config = readJsonFile<Record<string, unknown>>(openclawConfigPath, {});
   const tools = (config.tools as Record<string, unknown> | undefined) ?? {};
@@ -343,6 +426,7 @@ function ensureDurableExecPolicy(agentId = "main") {
   const file = readExecApprovalsFile();
   const agents = { ...(file.agents ?? {}) };
   const current = agents[agentId] ?? {};
+  const { openclawConfigPath } = getGuardControlPlanePaths();
   const config = readJsonFile<Record<string, unknown>>(openclawConfigPath, {});
 
   agents[agentId] = {
@@ -361,6 +445,7 @@ function ensureDurableExecPolicy(agentId = "main") {
 }
 
 function readOpenClawConfigFile() {
+  const { openclawConfigPath } = getGuardControlPlanePaths();
   if (!fs.existsSync(openclawConfigPath)) {
     return {
       exists: false,
@@ -391,6 +476,22 @@ function getPluginLoaded(config: Record<string, unknown>) {
   const allowList = Array.isArray(plugins.allow) ? plugins.allow : [];
 
   return allowList.includes("tessera-guard-local");
+}
+
+function getPluginTrust(config: Record<string, unknown>): GuardPluginTrustRecord {
+  const plugins = (config.plugins as { allow?: unknown[] } | undefined) ?? {};
+  const allowedPlugins = Array.isArray(plugins.allow) ? plugins.allow.map(String) : [];
+  const expectedPlugins = [...TRUSTED_DEMO_PLUGINS];
+  const unexpectedPlugins = allowedPlugins.filter(
+    (pluginId) => !expectedPlugins.includes(pluginId),
+  );
+
+  return {
+    trustStatus: unexpectedPlugins.length > 0 ? "untrusted_plugins_detected" : "trusted_only",
+    expectedPlugins,
+    allowedPlugins,
+    unexpectedPlugins,
+  };
 }
 
 function resolveGatewayTarget(config: Record<string, unknown>) {
@@ -484,6 +585,7 @@ export async function scanRepoScopedGuardRuntime(): Promise<GuardScanRecord> {
       configFound: false,
       runtimeReachable: false,
       pluginStatus: "unknown",
+      pluginTrustStatus: "trusted_only",
       attachedAgentId: null,
       reason:
         "No repo-scoped OpenClaw config found. Start the local runtime or create .openclaw-probe-home first.",
@@ -496,12 +598,14 @@ export async function scanRepoScopedGuardRuntime(): Promise<GuardScanRecord> {
       configFound: true,
       runtimeReachable: false,
       pluginStatus: "unknown",
+      pluginTrustStatus: "trusted_only",
       attachedAgentId: null,
       reason: `Repo-scoped OpenClaw config is unreadable: ${configState.error}`,
     };
   }
 
   const pluginLoaded = getPluginLoaded(configState.config);
+  const pluginTrust = getPluginTrust(configState.config);
   const reachability = await probeRuntimeReachability(configState.config);
 
   if (!reachability.runtimeReachable) {
@@ -510,6 +614,7 @@ export async function scanRepoScopedGuardRuntime(): Promise<GuardScanRecord> {
       configFound: true,
       runtimeReachable: false,
       pluginStatus: pluginLoaded ? "plugin_loaded" : "plugin_missing",
+      pluginTrustStatus: pluginTrust.trustStatus,
       attachedAgentId: null,
       reason: reachability.reason,
     };
@@ -520,6 +625,7 @@ export async function scanRepoScopedGuardRuntime(): Promise<GuardScanRecord> {
     configFound: true,
     runtimeReachable: true,
     pluginStatus: pluginLoaded ? "plugin_loaded" : "plugin_missing",
+    pluginTrustStatus: pluginTrust.trustStatus,
     attachedAgentId: "main",
     reason: pluginLoaded
       ? "Attached to repo-scoped OpenClaw agent main."
@@ -543,21 +649,102 @@ export function getCredentialStatus(
   return "valid";
 }
 
+function computeAuditHash(parsed: Record<string, unknown>) {
+  return crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify({
+        seq: parsed.seq ?? null,
+        prevHash: parsed.prevHash ?? null,
+        ts: parsed.ts ?? null,
+        hook: parsed.hook ?? null,
+        action: parsed.action ?? null,
+        allowed: parsed.allowed ?? null,
+        reason: parsed.reason ?? null,
+        message: parsed.message ?? null,
+        agentId: parsed.agentId ?? null,
+        toolName: parsed.toolName ?? null,
+        credentialId: parsed.credentialId ?? null,
+      }),
+      "utf8",
+    )
+    .digest("hex");
+}
+
 function readRecentGuardActions() {
+  const { probeLogPath } = getGuardControlPlanePaths();
   if (!fs.existsSync(probeLogPath)) {
-    return [] as GuardActionRecord[];
+    return {
+      actions: [] as GuardActionRecord[],
+      audit: {
+        integrity: "empty" as GuardAuditIntegrityStatus,
+        totalEvents: 0,
+        verifiedEvents: 0,
+        invalidEvents: 0,
+        lastHash: null,
+        lastSeq: 0,
+        reason: null,
+      },
+    };
   }
 
-  const lines = fs
-    .readFileSync(probeLogPath, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .slice(-200)
-    .reverse();
+  const lines = fs.readFileSync(probeLogPath, "utf8").split("\n").filter(Boolean);
+  const recentLines = lines.slice(-200).reverse();
 
   const actions: GuardActionRecord[] = [];
+  let previousHash: string | null = null;
+  let previousSeq = 0;
+  let verifiedEvents = 0;
+  let invalidEvents = 0;
+  let sawHashedEvent = false;
+  let lastHash: string | null = null;
+  let lastSeq = 0;
+  let integrity: GuardAuditIntegrityStatus = "verified";
+  let integrityReason: string | null = null;
 
   for (const line of lines) {
+    try {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      const seq = typeof parsed.seq === "number" ? parsed.seq : null;
+      const hash = typeof parsed.hash === "string" ? parsed.hash : null;
+      const prevHash = typeof parsed.prevHash === "string" ? parsed.prevHash : null;
+
+      if (seq === null || hash === null) {
+        continue;
+      }
+
+      sawHashedEvent = true;
+      lastHash = hash;
+      lastSeq = seq;
+      const computed = computeAuditHash(parsed);
+
+      if (computed !== hash) {
+        invalidEvents += 1;
+        integrity = "broken";
+        integrityReason = "Guard audit hash verification failed.";
+        continue;
+      }
+
+      if (seq !== previousSeq + 1 || prevHash !== previousHash) {
+        invalidEvents += 1;
+        integrity = "broken";
+        integrityReason = "Guard audit event chain is not contiguous.";
+        previousSeq = seq;
+        previousHash = hash;
+        continue;
+      }
+
+      verifiedEvents += 1;
+      previousSeq = seq;
+      previousHash = hash;
+    } catch {
+      invalidEvents += 1;
+      integrity = "broken";
+      integrityReason = "Guard audit log contains unreadable events.";
+    }
+  }
+
+  for (const line of recentLines) {
     try {
       const parsed = JSON.parse(line) as Record<string, unknown>;
       if (parsed.hook !== "guard_decision") {
@@ -573,19 +760,43 @@ function readRecentGuardActions() {
         timestamp,
         runtime: "OpenClaw",
         agentId: String(parsed.agentId ?? "unknown"),
+        evidenceId:
+          typeof parsed.hash === "string" ? parsed.hash.slice(0, 12) : "legacy-unverified",
       });
     } catch {
       continue;
     }
   }
 
-  return actions.slice(0, 12);
+  if (lines.length > 0 && !sawHashedEvent) {
+    integrity = "legacy";
+  }
+
+  if (lines.length === 0) {
+    integrity = "empty";
+  }
+
+  return {
+    actions: actions.slice(0, 12),
+    audit: {
+      integrity,
+      totalEvents: lines.length,
+      verifiedEvents,
+      invalidEvents,
+      lastHash,
+      lastSeq,
+      reason: integrityReason,
+    },
+  };
 }
 
 export async function readGuardControlPlaneState(): Promise<GuardControlPlaneState> {
   const runtimeScan = await scanRepoScopedGuardRuntime();
+  const { openclawConfigPath } = getGuardControlPlanePaths();
   const config = readJsonFile<Record<string, unknown>>(openclawConfigPath, {});
   const execApprovals = readExecApprovalsFile();
+  const pluginTrust = getPluginTrust(config);
+  const auditAndActions = readRecentGuardActions();
   const agentId = runtimeScan.attachedAgentId ?? "main";
   const credentialStoreState = readCredentialStoreState();
   const store = credentialStoreState.store;
@@ -605,17 +816,19 @@ export async function readGuardControlPlaneState(): Promise<GuardControlPlaneSta
         isDurableExecApprovalsEnabled(execApprovals, agentId) &&
         isRuntimeExecPolicyEnabled(config),
     },
+    pluginTrust,
+    audit: auditAndActions.audit,
     credential,
     credentialStatus: getCredentialStatus(credential),
     credentialStoreError: credentialStoreState.error,
-    actions: readRecentGuardActions(),
+    actions: auditAndActions.actions,
   };
 }
 
 function normalizeCredentialActions(actions?: string[]) {
   const provided = Array.isArray(actions) && actions.length > 0 ? actions : [EXEC_ACTION];
   return Array.from(new Set(provided)).filter(
-    (action) => action === EXEC_ACTION || action === MESSAGE_ACTION,
+    (action) => action === EXEC_ACTION || action === MESSAGE_ACTION || action === CODE_WRITE_ACTION,
   );
 }
 
@@ -666,7 +879,10 @@ export async function clearDemoCredential(agentId = "main") {
   const credential = store.agents[agentId];
   delete store.agents[agentId];
   writeCredentialStore(store);
-  if (credential?.scope.actions.includes(EXEC_ACTION) || readRuntimePolicySnapshotFile().agents[agentId]) {
+  if (
+    credential?.scope.actions.includes(EXEC_ACTION) ||
+    readRuntimePolicySnapshotFile().agents[agentId]
+  ) {
     restoreRuntimeExecPolicy(agentId);
   }
   return await readGuardControlPlaneState();

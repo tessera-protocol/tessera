@@ -151,14 +151,14 @@ export default function GuardDashboardPage() {
   const {
     scan,
     runtime,
+    pluginTrust,
+    audit,
     credential,
     credentialStatus,
     credentialStoreError,
     actions,
     scanForLocalAgents,
-    grantExecCredential,
-    grantMessageCredential,
-    grantCombinedCredential,
+    grantDemoCredential,
     revokeDemoCredential,
     clearDemoCredential,
     loading,
@@ -204,6 +204,22 @@ export default function GuardDashboardPage() {
           id: "credential-store-error",
           title: "Credential file unreadable",
           message: `Local credential state could not be read: ${credentialStoreError}`,
+        }
+      : null,
+    scan.pluginTrustStatus === "untrusted_plugins_detected"
+      ? {
+          id: "plugin-trust",
+          title: "Untrusted plugins enabled",
+          message: `Guard is loaded, but additional plugins are enabled in this runtime: ${pluginTrust.unexpectedPlugins.join(", ")}.`,
+        }
+      : null,
+    audit.integrity === "broken"
+      ? {
+          id: "audit-broken",
+          title: "Guard audit log integrity failed",
+          message:
+            audit.reason ??
+            "Guard decision events are present, but the hash chain is not contiguous or includes invalid records.",
         }
       : null,
   ].filter(Boolean) as Array<{ id: string; title: string; message: string }>;
@@ -312,8 +328,8 @@ export default function GuardDashboardPage() {
           </p>
           <p className="mt-1 text-xs text-content-muted">
             {credential
-              ? `Authorized scopes: ${credential.scope.actions.join(", ")}`
-              : "Any guarded exec action will be blocked until a valid credential is present."}
+              ? `Scope: ${credential.scope.actions.join(", ")}`
+              : "Any guarded action will be blocked until a valid credential is present."}
           </p>
         </div>
 
@@ -343,6 +359,9 @@ export default function GuardDashboardPage() {
               <p className="font-mono text-sm text-content-primary">{latest.action}</p>
               <p className="mt-1 text-xs text-content-muted">{latest.reason}</p>
               <p className="mt-2 font-mono text-[11px] text-content-dim">
+                evidence {latest.evidenceId}
+              </p>
+              <p className="mt-2 font-mono text-[11px] text-content-dim">
                 {formatRelative(latest.timestamp)}
               </p>
             </>
@@ -352,6 +371,14 @@ export default function GuardDashboardPage() {
             </p>
           )}
         </div>
+      </div>
+
+      <div className="mb-4 rounded-[18px] border border-status-warm/20 bg-status-warm/10 p-4">
+        <p className="text-sm font-semibold text-status-warm">Demo-only local control path</p>
+        <p className="mt-1 text-sm text-status-warm">
+          `/guard` can mutate repo-scoped credential and runtime policy files only for a local
+          demo on loopback. It is not a production auth surface.
+        </p>
       </div>
 
       {warnings.length > 0 ? (
@@ -517,13 +544,13 @@ export default function GuardDashboardPage() {
                         </p>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-[14px] border border-line bg-surface-card p-4">
-                        <p className="text-[10px] uppercase tracking-widest text-content-dim">
-                          Authorized scopes
-                        </p>
-                        <p className="mt-1 font-mono text-xs text-brand-purple-pale">
-                          {credential.scope.actions.join(", ")}
-                        </p>
+                        <div className="rounded-[14px] border border-line bg-surface-card p-4">
+                          <p className="text-[10px] uppercase tracking-widest text-content-dim">
+                            Scope
+                          </p>
+                          <p className="mt-1 font-mono text-xs text-brand-purple-pale">
+                            {credential.scope.actions.join(", ")}
+                          </p>
                         </div>
                         <div className="rounded-[14px] border border-line bg-surface-card p-4">
                           <p className="text-[10px] uppercase tracking-widest text-content-dim">
@@ -537,7 +564,8 @@ export default function GuardDashboardPage() {
                     </div>
                   ) : (
                     <div className="rounded-[14px] border border-dashed border-line bg-surface-card p-4 text-sm text-content-muted">
-                      No credential is currently bound. Any guarded `exec.shell` action will be blocked.
+                      No credential is currently bound. Guarded `exec.shell`, `message.send`,
+                      and `code.write` actions will be blocked.
                     </div>
                   )}
                 </div>
@@ -552,24 +580,10 @@ export default function GuardDashboardPage() {
                   <div className="mb-3 grid gap-3">
                     <button
                       type="button"
-                      onClick={() => void grantExecCredential()}
+                      onClick={() => void grantDemoCredential()}
                       className="rounded-[12px] bg-brand-purple py-3.5 text-sm font-semibold text-white transition-colors hover:bg-brand-purple-dark"
                     >
-                      Grant exec.shell
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void grantMessageCredential()}
-                      className="rounded-[12px] border border-brand-purple/25 bg-brand-purple/[0.08] py-3.5 text-sm font-semibold text-brand-purple-pale transition-colors hover:bg-brand-purple/[0.14]"
-                    >
-                      Grant message.send
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void grantCombinedCredential()}
-                      className="rounded-[12px] border border-line bg-surface-card py-3.5 text-sm font-semibold text-content-primary transition-colors hover:border-content-dim"
-                    >
-                      Grant both scopes
+                      Grant demo credential
                     </button>
                     <button
                       type="button"
@@ -578,22 +592,22 @@ export default function GuardDashboardPage() {
                     >
                       Revoke credential
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => void clearDemoCredential()}
+                      className="rounded-[12px] border border-line bg-surface-card py-3.5 text-sm font-semibold text-content-primary transition-colors hover:border-content-dim"
+                    >
+                      Clear credential
+                    </button>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => void clearDemoCredential()}
-                    className="mb-3 w-full rounded-[12px] border border-line bg-surface-card py-3.5 text-sm font-semibold text-content-primary transition-colors hover:border-content-dim"
-                  >
-                    Clear credential
-                  </button>
 
                   <p className="rounded-[14px] border border-line bg-surface-card p-4 text-sm leading-relaxed text-content-muted">
                     These controls read and write the real local credential file used by the
-                    OpenClaw Guard plugin. `exec.shell` grants keep the existing durable exec
-                    flow for agent main. `message.send` is enforced at the real message hook
-                    boundary and logged with redaction by default. A full outbound message demo
-                    still depends on local channel/account setup.
+                    OpenClaw Guard plugin. Granting a demo credential also switches the
+                    repo-local OpenClaw runtime into durable exec mode for agent main, so
+                    `exec.shell` runs without `/approve` prompts until the credential is
+                    revoked or cleared. Trigger a real `exec` action in OpenClaw and this
+                    page will pick up the next allow/block decision from the plugin log.
                   </p>
                 </div>
 
@@ -638,7 +652,13 @@ export default function GuardDashboardPage() {
                     Recent guarded actions
                   </p>
                   <span className="font-mono text-[11px] text-content-dim">
-                    secondary signal · local plugin log
+                    {audit.integrity === "verified"
+                      ? `verified log chain · seq ${audit.lastSeq}`
+                      : audit.integrity === "legacy"
+                        ? "legacy log format · unverified"
+                        : audit.integrity === "broken"
+                          ? "audit integrity failed"
+                          : "secondary signal · local plugin log"}
                   </span>
                 </div>
 
@@ -668,6 +688,9 @@ export default function GuardDashboardPage() {
                             {entry.action} · {entry.decision}
                           </p>
                           <p className="text-xs text-content-muted">{entry.reason}</p>
+                          <p className="text-[11px] font-mono text-content-dim">
+                            evidence {entry.evidenceId}
+                          </p>
                         </div>
                       </div>
                       <span className="ml-4 shrink-0 font-mono text-[11px] text-content-dim">

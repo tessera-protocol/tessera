@@ -1,140 +1,142 @@
 # Quickstart
 
-This quickstart shows the current Tessera Guard wedge for OpenClaw:
+This quickstart shows the current Tessera Guard milestone:
 
-- `exec.shell` is live end-to-end
-- `message.send` is enforced at the real `message_sending` hook boundary
-- both use the same durable grant / revoke model
+- no credential -> `exec.shell` is blocked
+- grant a credential from `/guard` -> the same command is allowed
+- run it again -> still allowed, with no one-shot approval
+- revoke the credential -> the same command is blocked again immediately
 
-## Fast Path
-
-From the repo root, run:
-
-```bash
-bash ./scripts/demo-guard --fresh
-```
-
-That one command:
-
-- prepares or reuses the repo-scoped `.openclaw-probe-home`
-- wires `tessera-guard-local`
-- verifies or links repo-scoped agent `main`
-- starts `/guard`
-- starts the repo-scoped gateway
-- prints the exact next demo steps for `exec.shell` and `message.send`
+This is a local demo flow for OpenClaw `main`.
 
 ## What You Need
 
 - Node/npm installed
 - `openclaw` installed locally
-- a working local OpenClaw `main` agent profile under `~/.openclaw/agents/main/agent/`
+- the repo cloned at `~/code/tessera`
 
-If that local `main` profile is missing or unusable, the harness fails clearly before claiming the demo is ready.
-
-## What the Harness Prints
-
-After startup, the harness tells you:
-
-- the `/guard` URL
-- the repo-scoped gateway URL
-- whether it reused or bootstrapped repo-scoped state
-- whether `main` was linked and passed a real preflight turn
-- the exact blocked / allowed / revoked checks to run next
-
-## First Checks
-
-1. Open the `/guard` URL printed by the harness.
-2. Click `Scan for local agents`.
-3. Confirm the top status surface shows:
-   - `Runtime reachable`
-   - `Plugin loaded`
-   - agent `main`
-
-## exec.shell
-
-Blocked:
+## 1. Install the local OpenClaw Guard plugin
 
 ```bash
-./openclaw-guard-plugin/demo/run-live-exec-check.sh blocked
+cd ~/code/tessera
+OPENCLAW_HOME=~/code/tessera/.openclaw-probe-home \
+script -q /dev/null openclaw plugins install --link ~/code/tessera/openclaw-guard-plugin
 ```
 
-Expected:
+## 2. Start the Guard dashboard
+
+In Terminal 1:
+
+```bash
+cd ~/code/tessera/apps/web
+npm install
+npm run dev:guard
+```
+
+Open:
+
+- `http://localhost:3000/guard`
+
+The `/guard` route is the local control surface. It reads and writes the real local credential file used by the OpenClaw Guard plugin.
+It is a loopback-only demo control path, not a production auth endpoint.
+
+## 3. Start the repo-scoped OpenClaw gateway
+
+In Terminal 2:
+
+```bash
+cd ~/code/tessera
+export OPENCLAW_HOME=~/code/tessera/.openclaw-probe-home
+export OPENCLAW_DISABLE_BONJOUR=1
+openclaw gateway run --allow-unconfigured --verbose --force --port 19001
+```
+
+You should see:
+
+- `listening on ws://127.0.0.1:19001`
+- canvas root under `~/code/tessera/.openclaw-probe-home/.openclaw/canvas`
+- model `openai-codex/gpt-5.4`
+
+If you see `~/.openclaw/...` instead, you are on the wrong runtime.
+
+## 4. Start the OpenClaw TUI on the same runtime
+
+In Terminal 3:
+
+```bash
+export OPENCLAW_HOME=~/code/tessera/.openclaw-probe-home
+openclaw tui
+```
+
+Wait for:
+
+- `gateway connected | idle`
+
+## 5. Run the durable Guard demo loop
+
+Use this exact prompt in the TUI every time:
+
+```text
+Use exec to run echo tessera-demo. If blocked, output only the exact denial reason. If allowed, output only the command result.
+```
+
+### Step 1: No credential -> blocked
+
+In `/guard`, make sure `Credential state` is `No credential`.
+
+Send the prompt once in the TUI.
+
+Expected result:
 
 ```text
 Tessera Guard blocked exec: no credential found for agent "main" authorizing exec.shell.
 ```
 
-Then in `/guard`:
+### Step 2: Grant credential -> allowed
 
-- click `Grant exec.shell`
+In `/guard`, click:
 
-Allowed twice:
+- `Grant demo credential`
 
-```bash
-./openclaw-guard-plugin/demo/run-live-exec-check.sh allowed
-./openclaw-guard-plugin/demo/run-live-exec-check.sh allowed
-```
+Wait for `Credential state` to become `Valid`.
 
-Expected:
+Send the same prompt again in the TUI.
 
-```text
-exec allowed
-```
-
-Then in `/guard`:
-
-- click `Revoke credential`
-
-Blocked again:
-
-```bash
-./openclaw-guard-plugin/demo/run-live-exec-check.sh blocked
-```
-
-## message.send
-
-This path is real at the hook boundary today. It is not presented here as a full outbound messaging demo.
-
-Blocked:
-
-```bash
-node ./openclaw-guard-plugin/demo/run-message-hook-check.js
-```
-
-Expected:
+Expected result:
 
 ```text
-Tessera Guard blocked message.send because agent "main" has no local Tessera credential authorizing message.send.
+tessera-demo
 ```
 
-Then in `/guard`:
+### Step 3: Same command again -> still allowed
 
-- click `Grant message.send`
+Send the same prompt a third time in the TUI.
 
-Allowed twice:
-
-```bash
-node ./openclaw-guard-plugin/demo/run-message-hook-check.js
-node ./openclaw-guard-plugin/demo/run-message-hook-check.js
-```
-
-Expected:
+Expected result:
 
 ```text
-Tessera Guard allowed message.send at the hook boundary.
+tessera-demo
 ```
 
-Then in `/guard`:
+This is the key proof that Tessera Guard is enforcing durable delegated authority, not one-shot approval.
 
-- click `Revoke credential`
+### Step 4: Revoke credential -> blocked again
 
-Blocked again:
+In `/guard`, click:
 
-```bash
-node ./openclaw-guard-plugin/demo/run-message-hook-check.js
+- `Revoke credential`
+
+Wait for `Credential state` to become `Revoked`.
+
+Send the same prompt one last time in the TUI.
+
+Expected result:
+
+```text
+Tessera Guard blocked exec: credential "..." has been revoked.
 ```
 
-## 7. What the dashboard should show
+## 6. What the dashboard should show
 
 The `/guard` page should reflect the real local control-plane state:
 
@@ -162,13 +164,14 @@ What is real today:
 
 - live OpenClaw plugin boundary
 - live `exec` / Tessera `exec.shell` enforcement
+- live mutation-tool (`code.write`) enforcement at the same `before_tool_call` boundary
 - dashboard-driven grant and revoke for agent `main`
 - immediate revocation effect
 
 What is still local or stubbed:
 
 - local JSON credentials
-- no issuer service
+- issuer is demo-only and must stay on localhost unless real auth is added
 - no VC / ZK verification
 - no persistent revocation registry
-- `message.send` is enforced at the real hook boundary, but not yet shown here as a full live outbound demo
+- `message.send` is only an initial hook-level path, not a full live outbound demo
