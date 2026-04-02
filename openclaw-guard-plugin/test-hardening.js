@@ -106,7 +106,7 @@ test.afterEach(() => {
   delete process.env.TESSERA_GUARD_DEBUG_LOG_PAYLOADS;
 });
 
-test("revoke restores prior runtime policy snapshot and clear falls back fail-closed", () => {
+test("revoke restores prior runtime policy snapshot and clear falls back fail-closed", async () => {
   const originalConfig = {
     plugins: {
       allow: ["tessera-guard-local"],
@@ -139,7 +139,7 @@ test("revoke restores prior runtime policy snapshot and clear falls back fail-cl
   writeJson(credentialsPath, { agents: {} });
   fs.rmSync(runtimePolicySnapshotPath, { force: true });
 
-  grantDemoCredential("main");
+  await grantDemoCredential("main");
 
   const widenedConfig = readJson(openclawConfigPath);
   const widenedApprovals = readJson(execApprovalsPath);
@@ -155,7 +155,7 @@ test("revoke restores prior runtime policy snapshot and clear falls back fail-cl
     originalApprovals.agents.main,
   );
 
-  revokeDemoCredential("main");
+  await revokeDemoCredential("main");
 
   assert.deepEqual(readJson(openclawConfigPath), originalConfig);
   assert.deepEqual(readJson(execApprovalsPath), originalApprovals);
@@ -172,7 +172,7 @@ test("revoke restores prior runtime policy snapshot and clear falls back fail-cl
     },
   });
 
-  clearDemoCredential("main");
+  await clearDemoCredential("main");
 
   const fallbackConfig = readJson(openclawConfigPath);
   const fallbackApprovals = readJson(execApprovalsPath);
