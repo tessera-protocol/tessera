@@ -7,6 +7,19 @@ Tessera Guard is a permission layer for agent actions.
 
 Today, the live integration is OpenClaw: a real Guard plugin blocks `exec.shell` by default, allows it while a valid credential is active, allows it again on the next identical action, and blocks it again immediately after revocation. The same Guard model now also covers `message.send` at the real hook boundary.
 
+## Fastest Path
+
+From the repo root:
+
+```bash
+bash ./scripts/demo-guard --fresh
+```
+
+Then use:
+
+- [Quickstart](./QUICKSTART.md) for the exact blocked / allowed / revoked checks
+- [Security Model](./SECURITY_MODEL.md) for the current trust assumptions and scope limits
+
 ## Durable Demo Loop
 
 The current milestone proves a durable authority loop, not a one-shot approval flow:
