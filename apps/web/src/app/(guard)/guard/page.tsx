@@ -156,7 +156,9 @@ export default function GuardDashboardPage() {
     credentialStoreError,
     actions,
     scanForLocalAgents,
-    grantDemoCredential,
+    grantExecCredential,
+    grantMessageCredential,
+    grantCombinedCredential,
     revokeDemoCredential,
     clearDemoCredential,
     loading,
@@ -310,7 +312,7 @@ export default function GuardDashboardPage() {
           </p>
           <p className="mt-1 text-xs text-content-muted">
             {credential
-              ? `Scope: ${credential.scope.actions.join(", ")}`
+              ? `Authorized scopes: ${credential.scope.actions.join(", ")}`
               : "Any guarded exec action will be blocked until a valid credential is present."}
           </p>
         </div>
@@ -515,13 +517,13 @@ export default function GuardDashboardPage() {
                         </p>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-[14px] border border-line bg-surface-card p-4">
-                          <p className="text-[10px] uppercase tracking-widest text-content-dim">
-                            Scope
-                          </p>
-                          <p className="mt-1 font-mono text-xs text-brand-purple-pale">
-                            {credential.scope.actions.join(", ")}
-                          </p>
+                      <div className="rounded-[14px] border border-line bg-surface-card p-4">
+                        <p className="text-[10px] uppercase tracking-widest text-content-dim">
+                          Authorized scopes
+                        </p>
+                        <p className="mt-1 font-mono text-xs text-brand-purple-pale">
+                          {credential.scope.actions.join(", ")}
+                        </p>
                         </div>
                         <div className="rounded-[14px] border border-line bg-surface-card p-4">
                           <p className="text-[10px] uppercase tracking-widest text-content-dim">
@@ -550,10 +552,24 @@ export default function GuardDashboardPage() {
                   <div className="mb-3 grid gap-3">
                     <button
                       type="button"
-                      onClick={() => void grantDemoCredential()}
+                      onClick={() => void grantExecCredential()}
                       className="rounded-[12px] bg-brand-purple py-3.5 text-sm font-semibold text-white transition-colors hover:bg-brand-purple-dark"
                     >
-                      Grant demo credential
+                      Grant exec.shell
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void grantMessageCredential()}
+                      className="rounded-[12px] border border-brand-purple/25 bg-brand-purple/[0.08] py-3.5 text-sm font-semibold text-brand-purple-pale transition-colors hover:bg-brand-purple/[0.14]"
+                    >
+                      Grant message.send
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void grantCombinedCredential()}
+                      className="rounded-[12px] border border-line bg-surface-card py-3.5 text-sm font-semibold text-content-primary transition-colors hover:border-content-dim"
+                    >
+                      Grant both scopes
                     </button>
                     <button
                       type="button"
@@ -562,22 +578,22 @@ export default function GuardDashboardPage() {
                     >
                       Revoke credential
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void clearDemoCredential()}
-                      className="rounded-[12px] border border-line bg-surface-card py-3.5 text-sm font-semibold text-content-primary transition-colors hover:border-content-dim"
-                    >
-                      Clear credential
-                    </button>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void clearDemoCredential()}
+                    className="mb-3 w-full rounded-[12px] border border-line bg-surface-card py-3.5 text-sm font-semibold text-content-primary transition-colors hover:border-content-dim"
+                  >
+                    Clear credential
+                  </button>
 
                   <p className="rounded-[14px] border border-line bg-surface-card p-4 text-sm leading-relaxed text-content-muted">
                     These controls read and write the real local credential file used by the
-                    OpenClaw Guard plugin. Granting a demo credential also switches the
-                    repo-local OpenClaw runtime into durable exec mode for agent main, so
-                    `exec.shell` runs without `/approve` prompts until the credential is
-                    revoked or cleared. Trigger a real `exec` action in OpenClaw and this
-                    page will pick up the next allow/block decision from the plugin log.
+                    OpenClaw Guard plugin. `exec.shell` grants keep the existing durable exec
+                    flow for agent main. `message.send` is enforced at the real message hook
+                    boundary and logged with redaction by default. A full outbound message demo
+                    still depends on local channel/account setup.
                   </p>
                 </div>
 

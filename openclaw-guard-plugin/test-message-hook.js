@@ -73,7 +73,10 @@ writeCredentials({
 });
 console.log(await runMessageHook("main"));
 
-printStep("3. Revoked credential");
+printStep("3. Valid message.send credential again");
+console.log(await runMessageHook("main"));
+
+printStep("4. Revoked credential");
 writeCredentials({
   agents: {
     main: {

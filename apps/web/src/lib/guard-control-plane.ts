@@ -96,6 +96,8 @@ const probeLogPath = path.join(pluginDir, "probe-events.jsonl");
 const openclawConfigPath = path.join(openclawHomeDir, "openclaw.json");
 const execApprovalsPath = path.join(openclawHomeDir, "exec-approvals.json");
 const DEMO_CREDENTIAL_LIFETIME_SECONDS = 15 * 60;
+const EXEC_ACTION = "exec.shell";
+const MESSAGE_ACTION = "message.send";
 
 function readJsonFile<T>(filePath: string, fallback: T): T {
   if (!fs.existsSync(filePath)) {
@@ -472,21 +474,31 @@ export async function readGuardControlPlaneState(): Promise<GuardControlPlaneSta
   };
 }
 
-export async function grantDemoCredential(agentId = "main") {
+function normalizeCredentialActions(actions?: string[]) {
+  const provided = Array.isArray(actions) && actions.length > 0 ? actions : [EXEC_ACTION];
+  return Array.from(new Set(provided)).filter(
+    (action) => action === EXEC_ACTION || action === MESSAGE_ACTION,
+  );
+}
+
+export async function grantDemoCredential(agentId = "main", actions?: string[]) {
   const store = readCredentialStore();
   const now = Math.floor(Date.now() / 1000);
+  const normalizedActions = normalizeCredentialActions(actions);
 
-  ensureDurableExecPolicy(agentId);
+  if (normalizedActions.includes(EXEC_ACTION)) {
+    ensureDurableExecPolicy(agentId);
+  }
 
   store.agents[agentId] = {
-    credentialId: `cred-${agentId}-exec-${now.toString(36)}`,
+    credentialId: `cred-${agentId}-${normalizedActions.join("-").replace(/\./g, "-")}-${now.toString(36)}`,
     agentId,
     issuer: "local-demo",
     issuedAt: now,
     expiresAt: now + DEMO_CREDENTIAL_LIFETIME_SECONDS,
     revoked: false,
     scope: {
-      actions: ["exec.shell"],
+      actions: normalizedActions,
     },
   };
 

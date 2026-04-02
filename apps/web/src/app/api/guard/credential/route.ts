@@ -12,13 +12,14 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     action?: "grant" | "revoke" | "clear";
     agentId?: string;
+    actions?: string[];
   };
 
   const agentId = body.agentId || "main";
 
   switch (body.action) {
     case "grant":
-      return NextResponse.json(await grantDemoCredential(agentId));
+      return NextResponse.json(await grantDemoCredential(agentId, body.actions));
     case "revoke":
       return NextResponse.json(await revokeDemoCredential(agentId));
     case "clear":
