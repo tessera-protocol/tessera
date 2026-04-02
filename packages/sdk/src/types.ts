@@ -76,6 +76,8 @@ export interface AgentScope {
  * that references the parent's Semaphore identity commitment.
  */
 export interface AgentDelegation {
+  /** Explicit unique identifier for this issuance event. */
+  id?: string;
   /** The parent human's identity commitment. */
   parentCommitment: string;
   /** Human-readable agent name. */

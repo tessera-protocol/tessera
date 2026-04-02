@@ -54,6 +54,18 @@ export function parseAgentCredential(token: string): ParsedAgentCredential {
 }
 
 export function getDelegationId(
+  delegation: Pick<AgentDelegation, 'parentCommitment' | 'agentName' | 'issuedAt' | 'expiresAt'> & {
+    id?: string;
+  },
+): string {
+  if (typeof delegation.id === 'string' && delegation.id.length > 0) {
+    return delegation.id;
+  }
+
+  return getLegacyDelegationId(delegation);
+}
+
+export function getLegacyDelegationId(
   delegation: Pick<AgentDelegation, 'parentCommitment' | 'agentName' | 'issuedAt' | 'expiresAt'>,
 ): string {
   return createHash('sha256')

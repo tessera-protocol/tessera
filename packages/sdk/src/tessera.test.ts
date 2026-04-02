@@ -395,6 +395,78 @@ describe('Tessera credential lifecycle', () => {
     verifier.close();
   });
 
+  it('should mint unique delegation ids for repeated issuance bursts', () => {
+    const issuer = createTestIssuer();
+    const { credential, holderSecretKey } = issuer.issue({
+      tier: 1,
+      jurisdiction: 'EU',
+      anchorHash: 'sha256-hash-of-bank-account-011b',
+    });
+    const issuedAt = 1_700_000_000;
+    const expiresAt = issuedAt + 3600;
+    const scopes = [
+      { canPost: true },
+      { canPost: true, maxRecipients: 1 },
+      { canPost: true, maxRecipients: 2 },
+      { canPost: true, maxRecipients: 3 },
+      { canPost: true, canTransact: true, maxTransactionValue: 5 },
+      { canPost: true, canTransact: true, maxTransactionValue: 10 },
+    ];
+
+    const delegations = Array.from({ length: 48 }, (_, index) =>
+      createDelegation(holderSecretKey, credential, {
+        agentName: 'agent-burst',
+        scope: scopes[index % scopes.length],
+        expiresAt,
+        issuedAt,
+      }),
+    );
+
+    const ids = delegations.map((delegation) => delegation.id);
+    assert.ok(ids.every((id): id is string => typeof id === 'string' && id.length > 0));
+    assert.equal(new Set(ids).size, delegations.length);
+  });
+
+  it('should reject delegations whose explicit id was tampered after signing', async () => {
+    const issuer = createTestIssuer();
+    const { credential, identitySecret, holderSecretKey } = issuer.issue({
+      tier: 1,
+      jurisdiction: 'EU',
+      anchorHash: 'sha256-hash-of-bank-account-011c',
+    });
+    const verifier = createVerifier({
+      platformId: 'platform-tampered-agent-id',
+      trustedIssuerPublicKeys: [issuer.getIssuerPublicKey()],
+      trustedGroupRoots: issuer.getRecentRoots(),
+    });
+
+    const delegation = createDelegation(holderSecretKey, credential, {
+      agentName: 'agent-tampered-id',
+      scope: { canPost: true },
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+    const tamperedDelegation = {
+      ...delegation,
+      id: 'delegation-id-tampered',
+    };
+
+    const proof = await prove(
+      identitySecret,
+      issuer.getGroup(),
+      credential,
+      'platform-tampered-agent-id',
+      '0',
+      tamperedDelegation,
+    );
+
+    const result = await verifier.verify(proof);
+
+    assert.equal(result.valid, false);
+    assert.match(result.error ?? '', /signature verification failed/);
+
+    verifier.close();
+  });
+
   it('should reject proofs generated against a rogue group root', async () => {
     const issuer = createTestIssuer();
 
