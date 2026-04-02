@@ -5,7 +5,7 @@
 
 Tessera Guard is a permission layer for agent actions.
 
-Today, the live integration is OpenClaw: a real Guard plugin blocks `exec.shell` by default, allows it while a valid credential is active, allows it again on the next identical action, and blocks it again immediately after revocation.
+Today, the live integration is OpenClaw: a real Guard plugin blocks `exec.shell` by default, allows it while a valid credential is active, allows it again on the next identical action, and blocks it again immediately after revocation. The same Guard model now also covers `message.send` at the real hook boundary.
 
 ## Durable Demo Loop
 
@@ -28,6 +28,7 @@ This is implemented live in OpenClaw today.
 
 - OpenClaw is the first live runtime integration
 - Tessera Guard enforces a real execution-time boundary for `exec`
+- Tessera Guard also enforces `message.send` at the real hook boundary
 - `/guard` is the beginning of a local control plane
 - local grant / revoke affects the real credential source used by the plugin
 - recent Guard decisions can be inspected from the dashboard and the plugin event log
@@ -64,6 +65,7 @@ Today:
 
 - OpenClaw Guard
 - local durable `exec.shell` demo
+- `message.send` hook-boundary enforcement with the same scoped grant / revoke model
 - local dashboard-backed grant / revoke flow
 
 Later:
