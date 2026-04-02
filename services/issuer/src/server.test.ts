@@ -15,6 +15,7 @@ import {
   prove,
 } from '@tessera-protocol/sdk';
 import { getDelegationId, serializeAgentCredential } from '@tessera-protocol/openclaw';
+import { signDelegation } from '@tessera-protocol/sdk/dist/crypto.js';
 import { createIssuerApp } from './app.js';
 
 const tempDirs: string[] = [];
@@ -249,6 +250,178 @@ test('revocation survives issuer restart', async () => {
     assert.match((guardRevoked.json as { reason?: string }).reason ?? '', /revoked/);
   } finally {
     await closeServer(second.server);
+  }
+});
+
+test('revocation remains one-to-one for burst-issued delegations with different scopes', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'tessera-issuer-burst-revocation-test-'));
+  tempDirs.push(dataDir);
+
+  const { server, baseUrl } = startIssuerServer(dataDir);
+  const issuerKeys = JSON.parse(
+    readFileSync(join(dataDir, 'issuer-keys.json'), 'utf8'),
+  ) as {
+    privateKeyPem: string;
+    publicKeyPem: string;
+  };
+  const issuer = createIssuer({
+    issuerPrivateKeyPem: issuerKeys.privateKeyPem,
+    issuerPublicKeyPem: issuerKeys.publicKeyPem,
+  });
+  const issued = issuer.issue({
+    tier: 1,
+    jurisdiction: 'EU',
+    anchorHash: 'burst-guard-anchor',
+  });
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const expiresAt = issuedAt + 3600;
+  const firstDelegation = createDelegation(issued.holderSecretKey, issued.credential, {
+    agentName: 'burst-agent',
+    scope: {
+      canPost: true,
+      maxRecipients: 1,
+    },
+    issuedAt,
+    expiresAt,
+  });
+  const secondDelegation = createDelegation(issued.holderSecretKey, issued.credential, {
+    agentName: 'burst-agent',
+    scope: {
+      canPost: true,
+      maxRecipients: 3,
+    },
+    issuedAt,
+    expiresAt,
+  });
+
+  assert.notEqual(firstDelegation.id, secondDelegation.id);
+
+  const firstToken = serializeAgentCredential({
+    version: 'tessera.openclaw/v1',
+    credential: issued.credential,
+    delegation: firstDelegation,
+  });
+  const secondToken = serializeAgentCredential({
+    version: 'tessera.openclaw/v1',
+    credential: issued.credential,
+    delegation: secondDelegation,
+  });
+
+  try {
+    const revokeResponse = await requestJson(baseUrl, '/delegation/revoke', {
+      method: 'POST',
+      body: {
+        delegationId: getDelegationId(firstDelegation),
+      },
+    });
+    assert.equal(revokeResponse.status, 200);
+
+    const firstCheck = await requestJson(baseUrl, '/guard/check', {
+      method: 'POST',
+      body: {
+        token: firstToken,
+        action: 'email.send',
+        resource: {
+          recipientCount: 1,
+        },
+      },
+    });
+    assert.equal(firstCheck.status, 200);
+    assert.equal((firstCheck.json as { allowed: boolean }).allowed, false);
+    assert.match((firstCheck.json as { reason?: string }).reason ?? '', /revoked/);
+
+    const secondCheck = await requestJson(baseUrl, '/guard/check', {
+      method: 'POST',
+      body: {
+        token: secondToken,
+        action: 'email.send',
+        resource: {
+          recipientCount: 2,
+        },
+      },
+    });
+    assert.equal(secondCheck.status, 200);
+    assert.equal((secondCheck.json as { allowed: boolean }).allowed, true);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test('legacy tokens without explicit delegation ids still revoke via the fallback identity', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'tessera-issuer-legacy-revocation-test-'));
+  tempDirs.push(dataDir);
+
+  const { server, baseUrl } = startIssuerServer(dataDir);
+  const issuerKeys = JSON.parse(
+    readFileSync(join(dataDir, 'issuer-keys.json'), 'utf8'),
+  ) as {
+    privateKeyPem: string;
+    publicKeyPem: string;
+  };
+  const issuer = createIssuer({
+    issuerPrivateKeyPem: issuerKeys.privateKeyPem,
+    issuerPublicKeyPem: issuerKeys.publicKeyPem,
+  });
+  const issued = issuer.issue({
+    tier: 1,
+    jurisdiction: 'EU',
+    anchorHash: 'legacy-guard-anchor',
+  });
+  const currentDelegation = createDelegation(issued.holderSecretKey, issued.credential, {
+    agentName: 'legacy-agent',
+    scope: {
+      canPost: true,
+      maxRecipients: 2,
+    },
+    issuedAt: Math.floor(Date.now() / 1000),
+    expiresAt: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const legacyDelegation = {
+    ...currentDelegation,
+    id: undefined,
+  };
+  legacyDelegation.parentSignature = signDelegation(
+    {
+      parentCommitment: legacyDelegation.parentCommitment,
+      agentName: legacyDelegation.agentName,
+      parentScope: legacyDelegation.parentScope,
+      scope: legacyDelegation.scope,
+      issuedAt: legacyDelegation.issuedAt,
+      expiresAt: legacyDelegation.expiresAt,
+    },
+    issued.holderSecretKey,
+  );
+
+  const token = serializeAgentCredential({
+    version: 'tessera.openclaw/v1',
+    credential: issued.credential,
+    delegation: legacyDelegation,
+  });
+
+  try {
+    const revokeResponse = await requestJson(baseUrl, '/delegation/revoke', {
+      method: 'POST',
+      body: {
+        delegationId: getDelegationId(legacyDelegation),
+      },
+    });
+    assert.equal(revokeResponse.status, 200);
+
+    const guardRevoked = await requestJson(baseUrl, '/guard/check', {
+      method: 'POST',
+      body: {
+        token,
+        action: 'email.send',
+        resource: {
+          recipientCount: 1,
+        },
+      },
+    });
+    assert.equal(guardRevoked.status, 200);
+    assert.equal((guardRevoked.json as { allowed: boolean }).allowed, false);
+    assert.match((guardRevoked.json as { reason?: string }).reason ?? '', /revoked/);
+  } finally {
+    await closeServer(server);
   }
 });
 

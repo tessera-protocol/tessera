@@ -8,6 +8,7 @@ export {
 } from './skill.js';
 export {
   getDelegationId,
+  getLegacyDelegationId,
   parseAgentCredential,
   serializeAgentCredential,
   type SerializedAgentCredentialPayload,

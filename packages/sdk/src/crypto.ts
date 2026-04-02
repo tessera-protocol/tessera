@@ -19,6 +19,7 @@ interface CredentialPayload {
 }
 
 interface DelegationPayload {
+  id?: string;
   parentCommitment: string;
   agentName: string;
   parentScope: AgentScope | null;
@@ -182,7 +183,7 @@ function getCredentialPayload(
 function getDelegationPayload(
   delegation: Omit<AgentDelegation, 'parentSignature'>,
 ): DelegationPayload {
-  return {
+  const payload: DelegationPayload = {
     parentCommitment: delegation.parentCommitment,
     agentName: delegation.agentName,
     parentScope: delegation.parentScope ?? null,
@@ -190,6 +191,12 @@ function getDelegationPayload(
     issuedAt: delegation.issuedAt,
     expiresAt: delegation.expiresAt,
   };
+
+  if (typeof delegation.id === 'string' && delegation.id.length > 0) {
+    payload.id = delegation.id;
+  };
+
+  return payload;
 }
 
 function stableStringify(value: unknown): string {

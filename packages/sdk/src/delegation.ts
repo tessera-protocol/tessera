@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { AgentDelegation, AgentScope, TesseraCredential } from './types.js';
 import { signDelegation } from './crypto.js';
 
@@ -13,6 +14,7 @@ export function createDelegation(
   },
 ): AgentDelegation {
   const delegationWithoutSignature = {
+    id: randomUUID(),
     parentCommitment: credential.identityCommitment,
     agentName: params.agentName,
     parentScope: params.parentScope ?? null,
