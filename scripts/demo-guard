@@ -1,0 +1,403 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OPENCLAW_HOME_DIR="$ROOT_DIR/.openclaw-probe-home"
+OPENCLAW_STATE_DIR="$OPENCLAW_HOME_DIR/.openclaw"
+HARNESS_DIR="$OPENCLAW_HOME_DIR/.tessera-guard-demo"
+PLUGIN_DIR="$ROOT_DIR/openclaw-guard-plugin"
+WEB_DIR="$ROOT_DIR/apps/web"
+WEB_PORT="${TESSERA_GUARD_WEB_PORT:-3000}"
+WEB_HOST="127.0.0.1"
+WEB_URL="http://${WEB_HOST}:${WEB_PORT}/guard"
+GATEWAY_PORT="${TESSERA_GUARD_GATEWAY_PORT:-19001}"
+GATEWAY_HOST="127.0.0.1"
+GATEWAY_URL="ws://${GATEWAY_HOST}:${GATEWAY_PORT}"
+WEB_PID_FILE="$HARNESS_DIR/web.pid"
+GATEWAY_PID_FILE="$HARNESS_DIR/gateway.pid"
+WEB_LOG_FILE="$HARNESS_DIR/web.log"
+GATEWAY_LOG_FILE="$HARNESS_DIR/gateway.log"
+MAIN_PREFLIGHT_JSON="$HARNESS_DIR/main-preflight.json"
+MAIN_PREFLIGHT_ERR="$HARNESS_DIR/main-preflight.err"
+CREDENTIALS_FILE="$PLUGIN_DIR/local-credentials.json"
+EVENT_LOG_FILE="$PLUGIN_DIR/probe-events.jsonl"
+MAIN_SOURCE_DIR="$HOME/.openclaw/agents/main/agent"
+MAIN_TARGET_DIR="$OPENCLAW_STATE_DIR/agents/main/agent"
+
+FRESH=0
+for arg in "$@"; do
+  case "$arg" in
+    --fresh|--reset)
+      FRESH=1
+      ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: ./scripts/demo-guard [--fresh]
+
+Bootstraps the repo-scoped OpenClaw Guard demo runtime, starts /guard and the
+repo-scoped gateway, then prints the exact next demo steps.
+
+Options:
+  --fresh, --reset   Clear repo-scoped Guard credential/log state before boot.
+EOF
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      exit 1
+      ;;
+  esac
+done
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing required command: $1" >&2
+    exit 1
+  fi
+}
+
+process_alive() {
+  local pid="$1"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+read_pid() {
+  local file="$1"
+  if [[ -f "$file" ]]; then
+    tr -d '[:space:]' <"$file"
+  fi
+}
+
+port_open() {
+  python3 - "$1" "$2" <<'PY'
+import socket
+import sys
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+
+sock = socket.socket()
+sock.settimeout(0.5)
+try:
+    sock.connect((host, port))
+except OSError:
+    sys.exit(1)
+else:
+    sys.exit(0)
+finally:
+    sock.close()
+PY
+}
+
+listener_pids() {
+  lsof -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null || true
+}
+
+fail_with_log_tail() {
+  local message="$1"
+  local log_file="$2"
+  echo "$message" >&2
+  if [[ -f "$log_file" ]]; then
+    echo >&2
+    echo "Last log lines from $log_file:" >&2
+    tail -n 20 "$log_file" >&2 || true
+  fi
+  exit 1
+}
+
+ensure_clean_pidfile() {
+  local pid_file="$1"
+  local pid
+  pid="$(read_pid "$pid_file")"
+  if [[ -n "$pid" ]] && ! process_alive "$pid"; then
+    rm -f "$pid_file"
+  fi
+}
+
+start_background_service() {
+  local name="$1"
+  local pid_file="$2"
+  local log_file="$3"
+  local host="$4"
+  local port="$5"
+  shift 5
+
+  ensure_clean_pidfile "$pid_file"
+
+  local existing_pid
+  existing_pid="$(read_pid "$pid_file")"
+  if [[ -n "$existing_pid" ]] && process_alive "$existing_pid"; then
+    if port_open "$host" "$port"; then
+      echo "reused:$existing_pid"
+      return 0
+    fi
+    kill "$existing_pid" 2>/dev/null || true
+    rm -f "$pid_file"
+  fi
+
+  if port_open "$host" "$port"; then
+    local conflict_pids
+    conflict_pids="$(listener_pids "$port" | tr '\n' ' ')"
+    echo "Port $port is already in use by another process (${conflict_pids:-unknown})." >&2
+    echo "Inspect it with: lsof -n -P -iTCP:$port -sTCP:LISTEN" >&2
+    echo "Stop that process or rerun the harness after it exits." >&2
+    if [[ "$FRESH" == "1" ]]; then
+      echo "If this is an existing demo-guard service you want to keep, rerun without --fresh so the harness can reuse it." >&2
+    fi
+    exit 1
+  fi
+
+  nohup "$@" >"$log_file" 2>&1 </dev/null &
+  local pid="$!"
+  echo "$pid" >"$pid_file"
+  disown "$pid" 2>/dev/null || true
+
+  for _ in $(seq 1 60); do
+    if port_open "$host" "$port"; then
+      echo "started:$pid"
+      return 0
+    fi
+    sleep 1
+  done
+
+  fail_with_log_tail "Timed out waiting for $name on ${host}:${port}." "$log_file"
+}
+
+require_cmd openclaw
+require_cmd npm
+require_cmd node
+require_cmd python3
+require_cmd curl
+require_cmd lsof
+
+HOME_STATUS="reused"
+if [[ ! -d "$OPENCLAW_HOME_DIR" || ! -d "$OPENCLAW_STATE_DIR" ]]; then
+  HOME_STATUS="created"
+fi
+
+mkdir -p "$OPENCLAW_HOME_DIR" "$OPENCLAW_STATE_DIR" "$HARNESS_DIR" "$MAIN_TARGET_DIR"
+
+if [[ "$FRESH" == "1" ]]; then
+  for pid_file in "$WEB_PID_FILE" "$GATEWAY_PID_FILE"; do
+    pid="$(read_pid "$pid_file")"
+    if [[ -n "$pid" ]] && process_alive "$pid"; then
+      kill "$pid" 2>/dev/null || true
+      sleep 1
+    fi
+    rm -f "$pid_file"
+  done
+  rm -f "$CREDENTIALS_FILE" "$EVENT_LOG_FILE"
+  echo "" >"$EVENT_LOG_FILE"
+  FRESH_NOTE="fresh demo state applied"
+else
+  FRESH_NOTE="existing demo state preserved"
+fi
+
+python3 - "$OPENCLAW_STATE_DIR/openclaw.json" "$PLUGIN_DIR" "$GATEWAY_PORT" <<'PY'
+import json
+import os
+import sys
+
+config_path, plugin_dir, gateway_port = sys.argv[1], sys.argv[2], int(sys.argv[3])
+
+if os.path.exists(config_path):
+    with open(config_path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+else:
+    data = {}
+
+gateway = data.setdefault("gateway", {})
+gateway["auth"] = {"mode": "none"}
+gateway["bind"] = "loopback"
+gateway["port"] = gateway_port
+
+agents = data.setdefault("agents", {})
+defaults = agents.setdefault("defaults", {})
+model = defaults.setdefault("model", {})
+model["primary"] = "openai-codex/gpt-5.4"
+
+plugins = data.setdefault("plugins", {})
+load_paths = plugins.get("load", {}).get("paths")
+if not isinstance(load_paths, list):
+    load_paths = []
+if plugin_dir not in load_paths:
+    load_paths.append(plugin_dir)
+plugins.setdefault("load", {})["paths"] = load_paths
+
+allow = plugins.get("allow")
+if not isinstance(allow, list):
+    allow = []
+if "tessera-guard-local" not in allow:
+    allow.append("tessera-guard-local")
+plugins["allow"] = allow
+
+entries = plugins.setdefault("entries", {})
+entry = entries.setdefault("tessera-guard-local", {})
+entry["enabled"] = True
+
+with open(config_path, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, indent=2)
+    handle.write("\n")
+PY
+
+PLUGIN_STATUS="wired"
+if ! OPENCLAW_HOME="$OPENCLAW_HOME_DIR" openclaw plugins inspect tessera-guard-local >/dev/null 2>&1; then
+  PLUGIN_STATUS="missing"
+  echo "Could not verify tessera-guard-local in the repo-scoped OpenClaw runtime." >&2
+  echo "Run: OPENCLAW_HOME=\"$OPENCLAW_HOME_DIR\" openclaw plugins inspect tessera-guard-local" >&2
+  exit 1
+fi
+
+MAIN_STATUS=()
+missing_main=()
+for name in models.json auth-profiles.json; do
+  src="$MAIN_SOURCE_DIR/$name"
+  dst="$MAIN_TARGET_DIR/$name"
+
+  if [[ -L "$dst" ]]; then
+    target="$(readlink "$dst" || true)"
+    if [[ "$target" == "$src" ]]; then
+      MAIN_STATUS+=("$name:linked")
+      continue
+    fi
+    rm -f "$dst"
+  elif [[ -f "$dst" ]]; then
+    MAIN_STATUS+=("$name:existing")
+    continue
+  fi
+
+  if [[ -f "$src" ]]; then
+    ln -s "$src" "$dst"
+    MAIN_STATUS+=("$name:linked")
+  else
+    missing_main+=("$src")
+  fi
+done
+
+if (( ${#missing_main[@]} > 0 )); then
+  echo "Repo-scoped agent main is not ready." >&2
+  printf 'Missing local OpenClaw profile files:\n' >&2
+  printf '  - %s\n' "${missing_main[@]}" >&2
+  echo "Set up your normal OpenClaw main agent profile first, then rerun ./scripts/demo-guard." >&2
+  exit 1
+fi
+
+if [[ ! -d "$WEB_DIR/node_modules" ]]; then
+  (cd "$WEB_DIR" && npm ci)
+  WEB_DEPS_STATUS="installed"
+else
+  WEB_DEPS_STATUS="ready"
+fi
+
+WEB_RESULT="$(start_background_service \
+  "Guard web" \
+  "$WEB_PID_FILE" \
+  "$WEB_LOG_FILE" \
+  "$WEB_HOST" \
+  "$WEB_PORT" \
+  env HOST="$WEB_HOST" PORT="$WEB_PORT" bash -lc "cd \"$WEB_DIR\" && exec npm run dev:guard -- --hostname $WEB_HOST --port $WEB_PORT")"
+
+if ! curl -fsS "$WEB_URL" >/dev/null 2>&1; then
+  fail_with_log_tail "Guard web did not become ready at $WEB_URL." "$WEB_LOG_FILE"
+fi
+
+GATEWAY_RESULT="$(start_background_service \
+  "repo-scoped OpenClaw gateway" \
+  "$GATEWAY_PID_FILE" \
+  "$GATEWAY_LOG_FILE" \
+  "$GATEWAY_HOST" \
+  "$GATEWAY_PORT" \
+  env OPENCLAW_HOME="$OPENCLAW_HOME_DIR" OPENCLAW_DISABLE_BONJOUR=1 bash -lc "cd \"$ROOT_DIR\" && exec openclaw gateway run --allow-unconfigured --verbose --port $GATEWAY_PORT")"
+
+if ! port_open "$GATEWAY_HOST" "$GATEWAY_PORT"; then
+  fail_with_log_tail "Repo-scoped OpenClaw gateway did not start on $GATEWAY_URL." "$GATEWAY_LOG_FILE"
+fi
+
+if ! env OPENCLAW_HOME="$OPENCLAW_HOME_DIR" bash -lc \
+  "cd \"$ROOT_DIR\" && openclaw agent --agent main --thinking off --message 'Reply with READY and nothing else.' --json" \
+  >"$MAIN_PREFLIGHT_JSON" 2>"$MAIN_PREFLIGHT_ERR"; then
+  echo "Repo-scoped agent main is linked, but it could not complete a simple OpenClaw turn." >&2
+  echo "This usually means the linked model/auth profile is missing or unusable." >&2
+  echo >&2
+  echo "Last stderr from the agent preflight:" >&2
+  tail -n 20 "$MAIN_PREFLIGHT_ERR" >&2 || true
+  exit 1
+fi
+
+if ! python3 - "$MAIN_PREFLIGHT_JSON" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+payloads = data.get("result", {}).get("payloads", [])
+texts = [payload.get("text", "") for payload in payloads if payload.get("text")]
+if not texts:
+    sys.exit(1)
+PY
+then
+  echo "Repo-scoped agent main responded with an unreadable preflight result." >&2
+  echo "Check $MAIN_PREFLIGHT_JSON and $MAIN_PREFLIGHT_ERR for details." >&2
+  exit 1
+fi
+
+cat <<EOF
+
+Tessera Guard repo-scoped demo ready
+
+Preflight
+- repo-scoped home: $HOME_STATUS at $OPENCLAW_HOME_DIR
+- plugin: $PLUGIN_STATUS
+- main agent: ${MAIN_STATUS[*]}
+- main agent turn: verified
+- web deps: $WEB_DEPS_STATUS
+- guard web: ${WEB_RESULT%%:*} at $WEB_URL
+- gateway: ${GATEWAY_RESULT%%:*} at $GATEWAY_URL
+- demo state: $FRESH_NOTE
+
+Next
+1. Open $WEB_URL
+2. The page starts disconnected. Click "Scan for local agents".
+3. Verify the top status surface reaches:
+   - Runtime reachable
+   - Plugin loaded
+   - agent main attached
+
+exec.shell demo
+- No credential:
+  $ROOT_DIR/openclaw-guard-plugin/demo/run-live-exec-check.sh blocked
+- Expected blocked:
+  Tessera Guard blocked exec: no credential found for agent "main" authorizing exec.shell.
+- In /guard click: Grant exec.shell
+- Run twice:
+  $ROOT_DIR/openclaw-guard-plugin/demo/run-live-exec-check.sh allowed
+- Expected allowed output:
+  exec allowed
+- In /guard click: Revoke credential
+- Run again:
+  $ROOT_DIR/openclaw-guard-plugin/demo/run-live-exec-check.sh blocked
+
+message.send demo (hook boundary)
+- No credential:
+  node $ROOT_DIR/openclaw-guard-plugin/demo/run-message-hook-check.js
+- Expected blocked:
+  Tessera Guard blocked message.send because agent "main" has no local Tessera credential authorizing message.send.
+- In /guard click: Grant message.send
+- Run twice:
+  node $ROOT_DIR/openclaw-guard-plugin/demo/run-message-hook-check.js
+- Expected allowed output:
+  Tessera Guard allowed message.send at the hook boundary.
+- In /guard click: Revoke credential
+- Run again:
+  node $ROOT_DIR/openclaw-guard-plugin/demo/run-message-hook-check.js
+
+Scope
+- exec.shell is live end-to-end
+- message.send is enforced at the real message_sending hook
+- full outbound message delivery may still depend on local channel/account setup
+
+Logs
+- web: $WEB_LOG_FILE
+- gateway: $GATEWAY_LOG_FILE
+EOF
