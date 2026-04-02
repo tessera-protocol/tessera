@@ -87,6 +87,23 @@ type ExecApprovalsFile = {
   >;
 };
 
+type RuntimePolicySnapshotFile = {
+  version: 1;
+  agents: Record<
+    string,
+    {
+      toolsExec?: Record<string, unknown>;
+      execApprovalsAgent?: {
+        security?: "deny" | "allowlist" | "full";
+        ask?: "always" | "on-miss" | "off";
+        askFallback?: "deny" | "allowlist" | "full";
+        autoAllowSkills?: boolean;
+        allowlist?: unknown[];
+      };
+    }
+  >;
+};
+
 const libDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(libDir, "../../../..");
 const pluginDir = path.join(repoRoot, "openclaw-guard-plugin");
@@ -95,6 +112,10 @@ const credentialsPath = path.join(pluginDir, "local-credentials.json");
 const probeLogPath = path.join(pluginDir, "probe-events.jsonl");
 const openclawConfigPath = path.join(openclawHomeDir, "openclaw.json");
 const execApprovalsPath = path.join(openclawHomeDir, "exec-approvals.json");
+const runtimePolicySnapshotPath = path.join(
+  openclawHomeDir,
+  "tessera-guard-runtime-policy.json",
+);
 const DEMO_CREDENTIAL_LIFETIME_SECONDS = 15 * 60;
 const EXEC_ACTION = "exec.shell";
 const MESSAGE_ACTION = "message.send";
@@ -168,6 +189,17 @@ function writeExecApprovalsFile(value: ExecApprovalsFile) {
   writeJsonFile(execApprovalsPath, value);
 }
 
+function readRuntimePolicySnapshotFile(): RuntimePolicySnapshotFile {
+  return readJsonFile<RuntimePolicySnapshotFile>(runtimePolicySnapshotPath, {
+    version: 1,
+    agents: {},
+  });
+}
+
+function writeRuntimePolicySnapshotFile(value: RuntimePolicySnapshotFile) {
+  writeJsonFile(runtimePolicySnapshotPath, value);
+}
+
 function isDurableExecApprovalsEnabled(file: ExecApprovalsFile, agentId = "main") {
   const defaults = file.defaults ?? {};
   const agent = file.agents?.[agentId] ?? {};
@@ -201,7 +233,113 @@ function ensureRuntimeExecPolicy(config: Record<string, unknown>) {
   });
 }
 
+function isPermissiveExecState(
+  toolsExec: Record<string, unknown> | undefined,
+  execApprovalsAgent:
+    | {
+        security?: "deny" | "allowlist" | "full";
+        ask?: "always" | "on-miss" | "off";
+      }
+    | undefined,
+) {
+  return (
+    toolsExec?.security === "full" &&
+    toolsExec?.ask === "off" &&
+    execApprovalsAgent?.security === "full" &&
+    execApprovalsAgent?.ask === "off"
+  );
+}
+
+function snapshotRuntimePolicy(agentId = "main") {
+  const snapshot = readRuntimePolicySnapshotFile();
+  if (snapshot.agents[agentId]) {
+    return;
+  }
+
+  const config = readJsonFile<Record<string, unknown>>(openclawConfigPath, {});
+  const tools = (config.tools as Record<string, unknown> | undefined) ?? {};
+  const exec = (tools.exec as Record<string, unknown> | undefined) ?? undefined;
+  const execApprovals = readExecApprovalsFile();
+  const execApprovalsAgent = execApprovals.agents?.[agentId];
+
+  // Heal old leaked demo state on main: if the repo-scoped runtime is already
+  // in the widened full/off mode with no prior snapshot, do not preserve it.
+  if (isPermissiveExecState(exec, execApprovalsAgent)) {
+    return;
+  }
+
+  snapshot.agents[agentId] = {
+    toolsExec: exec ? { ...exec } : undefined,
+    execApprovalsAgent: execApprovalsAgent ? { ...execApprovalsAgent } : undefined,
+  };
+
+  writeRuntimePolicySnapshotFile(snapshot);
+}
+
+function restoreRuntimeExecPolicy(agentId = "main") {
+  const snapshot = readRuntimePolicySnapshotFile();
+  const config = readJsonFile<Record<string, unknown>>(openclawConfigPath, {});
+  const tools = (config.tools as Record<string, unknown> | undefined) ?? {};
+  const execApprovals = readExecApprovalsFile();
+  const agents = { ...(execApprovals.agents ?? {}) };
+  const prior = snapshot.agents[agentId];
+
+  if (prior) {
+    const nextTools = { ...tools };
+    if (prior.toolsExec) {
+      nextTools.exec = { ...prior.toolsExec };
+    } else {
+      delete nextTools.exec;
+    }
+
+    writeJsonFile(openclawConfigPath, {
+      ...config,
+      tools: nextTools,
+    });
+
+    if (prior.execApprovalsAgent) {
+      agents[agentId] = { ...prior.execApprovalsAgent };
+    } else {
+      delete agents[agentId];
+    }
+
+    writeExecApprovalsFile({
+      version: 1,
+      defaults: execApprovals.defaults,
+      agents,
+    });
+
+    delete snapshot.agents[agentId];
+    writeRuntimePolicySnapshotFile(snapshot);
+    return;
+  }
+
+  writeJsonFile(openclawConfigPath, {
+    ...config,
+    tools: {
+      ...tools,
+      exec: {
+        security: "deny",
+        ask: "on-miss",
+      },
+    },
+  });
+
+  agents[agentId] = {
+    ...(agents[agentId] ?? {}),
+    security: "deny",
+    ask: "on-miss",
+  };
+
+  writeExecApprovalsFile({
+    version: 1,
+    defaults: execApprovals.defaults,
+    agents,
+  });
+}
+
 function ensureDurableExecPolicy(agentId = "main") {
+  snapshotRuntimePolicy(agentId);
   const file = readExecApprovalsFile();
   const agents = { ...(file.agents ?? {}) };
   const current = agents[agentId] ?? {};
@@ -511,9 +649,13 @@ export async function revokeDemoCredential(agentId = "main") {
   const credential = store.agents[agentId];
 
   if (credential) {
+    const includesExecScope = credential.scope.actions.includes(EXEC_ACTION);
     credential.revoked = true;
     credential.revokedAt = Math.floor(Date.now() / 1000);
     writeCredentialStore(store);
+    if (includesExecScope) {
+      restoreRuntimeExecPolicy(agentId);
+    }
   }
 
   return await readGuardControlPlaneState();
@@ -521,7 +663,11 @@ export async function revokeDemoCredential(agentId = "main") {
 
 export async function clearDemoCredential(agentId = "main") {
   const store = readCredentialStore();
+  const credential = store.agents[agentId];
   delete store.agents[agentId];
   writeCredentialStore(store);
+  if (credential?.scope.actions.includes(EXEC_ACTION) || readRuntimePolicySnapshotFile().agents[agentId]) {
+    restoreRuntimeExecPolicy(agentId);
+  }
   return await readGuardControlPlaneState();
 }

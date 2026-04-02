@@ -21,6 +21,7 @@ MAIN_PREFLIGHT_JSON="$HARNESS_DIR/main-preflight.json"
 MAIN_PREFLIGHT_ERR="$HARNESS_DIR/main-preflight.err"
 CREDENTIALS_FILE="$PLUGIN_DIR/local-credentials.json"
 EVENT_LOG_FILE="$PLUGIN_DIR/probe-events.jsonl"
+RUNTIME_POLICY_SNAPSHOT_FILE="$OPENCLAW_STATE_DIR/tessera-guard-runtime-policy.json"
 MAIN_SOURCE_DIR="$HOME/.openclaw/agents/main/agent"
 MAIN_TARGET_DIR="$OPENCLAW_STATE_DIR/agents/main/agent"
 
@@ -66,6 +67,61 @@ read_pid() {
   if [[ -f "$file" ]]; then
     tr -d '[:space:]' <"$file"
   fi
+}
+
+process_command_line() {
+  local pid="$1"
+  ps -p "$pid" -o command= 2>/dev/null || true
+}
+
+pid_owns_port() {
+  local pid="$1"
+  local port="$2"
+  lsof -n -P -a -p "$pid" -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+process_matches_expected() {
+  local pid="$1"
+  shift
+  local command_line
+  command_line="$(process_command_line "$pid")"
+  [[ -n "$command_line" ]] || return 1
+
+  local pattern
+  for pattern in "$@"; do
+    if [[ "$command_line" == *"$pattern"* ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+stop_managed_pidfile() {
+  local name="$1"
+  local pid_file="$2"
+  local port="$3"
+  local expected_patterns="$4"
+  local pid
+  pid="$(read_pid "$pid_file")"
+
+  if [[ -z "$pid" ]] || ! process_alive "$pid"; then
+    rm -f "$pid_file"
+    return 0
+  fi
+
+  IFS='|' read -r -a patterns <<< "$expected_patterns"
+  if pid_owns_port "$pid" "$port" || process_matches_expected "$pid" "${patterns[@]}"; then
+    kill "$pid" 2>/dev/null || true
+    sleep 1
+    rm -f "$pid_file"
+    return 0
+  fi
+
+  echo "Refusing to kill PID $pid from $pid_file because it does not look like the expected $name process." >&2
+  echo "Inspect it with: ps -p $pid -o pid=,command=" >&2
+  echo "If this pidfile is stale, remove $pid_file manually and rerun the harness." >&2
+  exit 1
 }
 
 port_open() {
@@ -120,19 +176,28 @@ start_background_service() {
   local log_file="$3"
   local host="$4"
   local port="$5"
-  shift 5
+  local expected_patterns="$6"
+  shift 6
 
   ensure_clean_pidfile "$pid_file"
 
   local existing_pid
   existing_pid="$(read_pid "$pid_file")"
   if [[ -n "$existing_pid" ]] && process_alive "$existing_pid"; then
-    if port_open "$host" "$port"; then
+    if pid_owns_port "$existing_pid" "$port"; then
       echo "reused:$existing_pid"
       return 0
     fi
-    kill "$existing_pid" 2>/dev/null || true
-    rm -f "$pid_file"
+    IFS='|' read -r -a patterns <<< "$expected_patterns"
+    if process_matches_expected "$existing_pid" "${patterns[@]}"; then
+      kill "$existing_pid" 2>/dev/null || true
+      rm -f "$pid_file"
+    else
+      echo "Refusing to kill PID $existing_pid from $pid_file because it no longer matches the expected $name process." >&2
+      echo "Inspect it with: ps -p $existing_pid -o pid=,command=" >&2
+      echo "If this pidfile is stale, remove $pid_file manually and rerun the harness." >&2
+      exit 1
+    fi
   fi
 
   if port_open "$host" "$port"; then
@@ -178,15 +243,9 @@ fi
 mkdir -p "$OPENCLAW_HOME_DIR" "$OPENCLAW_STATE_DIR" "$HARNESS_DIR" "$MAIN_TARGET_DIR"
 
 if [[ "$FRESH" == "1" ]]; then
-  for pid_file in "$WEB_PID_FILE" "$GATEWAY_PID_FILE"; do
-    pid="$(read_pid "$pid_file")"
-    if [[ -n "$pid" ]] && process_alive "$pid"; then
-      kill "$pid" 2>/dev/null || true
-      sleep 1
-    fi
-    rm -f "$pid_file"
-  done
-  rm -f "$CREDENTIALS_FILE" "$EVENT_LOG_FILE"
+  stop_managed_pidfile "Guard web" "$WEB_PID_FILE" "$WEB_PORT" "next dev|npm run dev:guard"
+  stop_managed_pidfile "repo-scoped OpenClaw gateway" "$GATEWAY_PID_FILE" "$GATEWAY_PORT" "openclaw gateway run"
+  rm -f "$CREDENTIALS_FILE" "$EVENT_LOG_FILE" "$RUNTIME_POLICY_SNAPSHOT_FILE"
   echo "" >"$EVENT_LOG_FILE"
   FRESH_NOTE="fresh demo state applied"
 else
@@ -295,6 +354,7 @@ WEB_RESULT="$(start_background_service \
   "$WEB_LOG_FILE" \
   "$WEB_HOST" \
   "$WEB_PORT" \
+  "next dev|npm run dev:guard" \
   env HOST="$WEB_HOST" PORT="$WEB_PORT" bash -lc "cd \"$WEB_DIR\" && exec npm run dev:guard -- --hostname $WEB_HOST --port $WEB_PORT")"
 
 if ! curl -fsS "$WEB_URL" >/dev/null 2>&1; then
@@ -307,6 +367,7 @@ GATEWAY_RESULT="$(start_background_service \
   "$GATEWAY_LOG_FILE" \
   "$GATEWAY_HOST" \
   "$GATEWAY_PORT" \
+  "openclaw gateway run" \
   env OPENCLAW_HOME="$OPENCLAW_HOME_DIR" OPENCLAW_DISABLE_BONJOUR=1 bash -lc "cd \"$ROOT_DIR\" && exec openclaw gateway run --allow-unconfigured --verbose --port $GATEWAY_PORT")"
 
 if ! port_open "$GATEWAY_HOST" "$GATEWAY_PORT"; then
