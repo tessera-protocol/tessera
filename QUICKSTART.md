@@ -11,6 +11,16 @@ Tessera Guard now also covers `message.send` in OpenClaw with the same scoped gr
 
 This is a local demo flow for OpenClaw `main`.
 
+## Fast Path
+
+From the repo root, run:
+
+```bash
+bash ./scripts/demo-guard
+```
+
+That one command prepares or reuses the repo-scoped OpenClaw home, wires `tessera-guard-local`, verifies `main`, starts `/guard`, starts the repo-scoped gateway, and prints the exact next demo steps for both `exec.shell` and `message.send`.
+
 ## What You Need
 
 - Node/npm installed

@@ -20,6 +20,7 @@ This is implemented live in OpenClaw today.
 
 ## Start Here
 
+- Fast path: `bash ./scripts/demo-guard`
 - [Quickstart](./QUICKSTART.md): install the local OpenClaw Guard plugin, run `/guard`, and reproduce the durable `exec.shell` loop
 - [Security Model](./SECURITY_MODEL.md): current trust assumptions, revocation semantics, and demo limitations
 - [OpenClaw Guard package](./openclaw-guard-plugin/README.md): plugin-level details and local plugin behavior
