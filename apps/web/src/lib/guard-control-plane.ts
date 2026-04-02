@@ -2,18 +2,23 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import crypto from "node:crypto";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 
 export type GuardCredentialStatus = "none" | "valid" | "revoked" | "expired";
 export type GuardConnectionStatus =
-  | "disconnected"
+  | "no_openclaw_found"
   | "scanning"
-  | "local_config_found"
+  | "openclaw_config_found"
+  | "runtime_not_reachable"
   | "runtime_reachable"
+  | "multiple_agents_found"
+  | "attached"
   | "error";
 export type GuardPluginStatus = "plugin_loaded" | "plugin_missing" | "unknown";
 export type GuardPluginTrustStatus = "trusted_only" | "untrusted_plugins_detected";
 export type GuardAuditIntegrityStatus = "empty" | "legacy" | "verified" | "broken";
+export type GuardRuntimeKind = "repo_scoped" | "standard_local";
 
 export type GuardRuntimeRecord = {
   agentId: string;
@@ -27,10 +32,19 @@ export type GuardRuntimeRecord = {
 
 export type GuardScanRecord = {
   connectionStatus: GuardConnectionStatus;
+  installationFound: boolean;
   configFound: boolean;
   runtimeReachable: boolean;
+  runtimeKind: GuardRuntimeKind | null;
+  runtimeLabel: string | null;
+  availableRuntimeKinds: GuardRuntimeKind[];
+  runtimeSelectionRequired: boolean;
   pluginStatus: GuardPluginStatus;
   pluginTrustStatus: GuardPluginTrustStatus;
+  availableAgents: string[];
+  defaultAttachableAgentId: string | null;
+  agentSelectionRequired: boolean;
+  autoAttached: boolean;
   attachedAgentId: string | null;
   reason: string | null;
 };
@@ -129,6 +143,8 @@ type RuntimePolicySnapshotFile = {
 };
 
 type GuardControlPlanePaths = {
+  runtimeKind: GuardRuntimeKind;
+  runtimeLabel: string;
   repoRoot: string;
   pluginDir: string;
   openclawHomeDir: string;
@@ -146,16 +162,47 @@ const EXEC_ACTION = "exec.shell";
 const MESSAGE_ACTION = "message.send";
 const CODE_WRITE_ACTION = "code.write";
 const TRUSTED_DEMO_PLUGINS = ["tessera-guard-local"] as const;
+const DEFAULT_GUARD_AGENT_ID = "main";
 
-function getGuardControlPlanePaths(): GuardControlPlanePaths {
+type GuardSelection = {
+  runtimeKind?: GuardRuntimeKind | null;
+  agentId?: string | null;
+};
+
+type GuardDiscoveredRuntime = {
+  paths: GuardControlPlanePaths;
+  configFound: boolean;
+  config: Record<string, unknown>;
+  configError: string | null;
+  runtimeReachable: boolean;
+  runtimeReason: string;
+  runtimeProbeError: boolean;
+  pluginStatus: GuardPluginStatus;
+  pluginTrust: GuardPluginTrustRecord;
+  availableAgents: string[];
+};
+
+type GuardRuntimeProbeResult = {
+  runtimeReachable: boolean;
+  reason: string;
+  error: boolean;
+};
+
+function getGuardControlPlanePaths(runtimeKind: GuardRuntimeKind): GuardControlPlanePaths {
   const repoRoot = resolveRepoRoot();
   const pluginDir =
     process.env.TESSERA_GUARD_PLUGIN_DIR ?? path.join(repoRoot, "openclaw-guard-plugin");
-  const openclawHomeDir =
-    process.env.TESSERA_OPENCLAW_HOME_DIR ??
-    path.join(repoRoot, ".openclaw-probe-home", ".openclaw");
+  const repoScopedHomeDir =
+    process.env.TESSERA_OPENCLAW_HOME_DIR ?? path.join(repoRoot, ".openclaw-probe-home", ".openclaw");
+  const standardHomeDir =
+    process.env.TESSERA_STANDARD_OPENCLAW_HOME_DIR ?? path.join(os.homedir(), ".openclaw");
+  const openclawHomeDir = runtimeKind === "repo_scoped" ? repoScopedHomeDir : standardHomeDir;
+  const runtimeLabel =
+    runtimeKind === "repo_scoped" ? "repo-scoped demo runtime" : "standard local runtime";
 
   return {
+    runtimeKind,
+    runtimeLabel,
     repoRoot,
     pluginDir,
     openclawHomeDir,
@@ -212,12 +259,12 @@ function writeJsonFile(filePath: string, value: unknown) {
 }
 
 function readCredentialStore(): CredentialStore {
-  const { credentialsPath } = getGuardControlPlanePaths();
+  const { credentialsPath } = getGuardControlPlanePaths("repo_scoped");
   return readJsonFile<CredentialStore>(credentialsPath, { agents: {} });
 }
 
 function readCredentialStoreState() {
-  const { credentialsPath } = getGuardControlPlanePaths();
+  const { credentialsPath } = getGuardControlPlanePaths("repo_scoped");
   if (!fs.existsSync(credentialsPath)) {
     return {
       store: { agents: {} } as CredentialStore,
@@ -252,33 +299,33 @@ function readCredentialStoreState() {
 }
 
 function writeCredentialStore(value: CredentialStore) {
-  const { credentialsPath } = getGuardControlPlanePaths();
+  const { credentialsPath } = getGuardControlPlanePaths("repo_scoped");
   writeJsonFile(credentialsPath, value);
 }
 
-function readExecApprovalsFile(): ExecApprovalsFile {
-  const { execApprovalsPath } = getGuardControlPlanePaths();
+function readExecApprovalsFile(runtimeKind: GuardRuntimeKind): ExecApprovalsFile {
+  const { execApprovalsPath } = getGuardControlPlanePaths(runtimeKind);
   return readJsonFile<ExecApprovalsFile>(execApprovalsPath, {
     version: 1,
     agents: {},
   });
 }
 
-function writeExecApprovalsFile(value: ExecApprovalsFile) {
-  const { execApprovalsPath } = getGuardControlPlanePaths();
+function writeExecApprovalsFile(runtimeKind: GuardRuntimeKind, value: ExecApprovalsFile) {
+  const { execApprovalsPath } = getGuardControlPlanePaths(runtimeKind);
   writeJsonFile(execApprovalsPath, value);
 }
 
-function readRuntimePolicySnapshotFile(): RuntimePolicySnapshotFile {
-  const { runtimePolicySnapshotPath } = getGuardControlPlanePaths();
+function readRuntimePolicySnapshotFile(runtimeKind: GuardRuntimeKind): RuntimePolicySnapshotFile {
+  const { runtimePolicySnapshotPath } = getGuardControlPlanePaths(runtimeKind);
   return readJsonFile<RuntimePolicySnapshotFile>(runtimePolicySnapshotPath, {
     version: 1,
     agents: {},
   });
 }
 
-function writeRuntimePolicySnapshotFile(value: RuntimePolicySnapshotFile) {
-  const { runtimePolicySnapshotPath } = getGuardControlPlanePaths();
+function writeRuntimePolicySnapshotFile(runtimeKind: GuardRuntimeKind, value: RuntimePolicySnapshotFile) {
+  const { runtimePolicySnapshotPath } = getGuardControlPlanePaths(runtimeKind);
   writeJsonFile(runtimePolicySnapshotPath, value);
 }
 
@@ -298,8 +345,8 @@ function isRuntimeExecPolicyEnabled(config: Record<string, unknown>) {
   return exec.security === "full" && exec.ask === "off";
 }
 
-function ensureRuntimeExecPolicy(config: Record<string, unknown>) {
-  const { openclawConfigPath } = getGuardControlPlanePaths();
+function ensureRuntimeExecPolicy(runtimeKind: GuardRuntimeKind, config: Record<string, unknown>) {
+  const { openclawConfigPath } = getGuardControlPlanePaths(runtimeKind);
   const tools = (config.tools as Record<string, unknown> | undefined) ?? {};
   const exec = (tools.exec as Record<string, unknown> | undefined) ?? {};
 
@@ -333,17 +380,17 @@ function isPermissiveExecState(
   );
 }
 
-function snapshotRuntimePolicy(agentId = "main") {
-  const snapshot = readRuntimePolicySnapshotFile();
+function snapshotRuntimePolicy(runtimeKind: GuardRuntimeKind, agentId = DEFAULT_GUARD_AGENT_ID) {
+  const snapshot = readRuntimePolicySnapshotFile(runtimeKind);
   if (snapshot.agents[agentId]) {
     return;
   }
 
-  const { openclawConfigPath } = getGuardControlPlanePaths();
+  const { openclawConfigPath } = getGuardControlPlanePaths(runtimeKind);
   const config = readJsonFile<Record<string, unknown>>(openclawConfigPath, {});
   const tools = (config.tools as Record<string, unknown> | undefined) ?? {};
   const exec = (tools.exec as Record<string, unknown> | undefined) ?? undefined;
-  const execApprovals = readExecApprovalsFile();
+  const execApprovals = readExecApprovalsFile(runtimeKind);
   const execApprovalsAgent = execApprovals.agents?.[agentId];
 
   if (isPermissiveExecState(exec, execApprovalsAgent)) {
@@ -355,15 +402,15 @@ function snapshotRuntimePolicy(agentId = "main") {
     execApprovalsAgent: execApprovalsAgent ? { ...execApprovalsAgent } : undefined,
   };
 
-  writeRuntimePolicySnapshotFile(snapshot);
+  writeRuntimePolicySnapshotFile(runtimeKind, snapshot);
 }
 
-function restoreRuntimeExecPolicy(agentId = "main") {
-  const { openclawConfigPath } = getGuardControlPlanePaths();
-  const snapshot = readRuntimePolicySnapshotFile();
+function restoreRuntimeExecPolicy(runtimeKind: GuardRuntimeKind, agentId = DEFAULT_GUARD_AGENT_ID) {
+  const { openclawConfigPath } = getGuardControlPlanePaths(runtimeKind);
+  const snapshot = readRuntimePolicySnapshotFile(runtimeKind);
   const config = readJsonFile<Record<string, unknown>>(openclawConfigPath, {});
   const tools = (config.tools as Record<string, unknown> | undefined) ?? {};
-  const execApprovals = readExecApprovalsFile();
+  const execApprovals = readExecApprovalsFile(runtimeKind);
   const agents = { ...(execApprovals.agents ?? {}) };
   const prior = snapshot.agents[agentId];
 
@@ -386,14 +433,14 @@ function restoreRuntimeExecPolicy(agentId = "main") {
       delete agents[agentId];
     }
 
-    writeExecApprovalsFile({
+    writeExecApprovalsFile(runtimeKind, {
       version: 1,
       defaults: execApprovals.defaults,
       agents,
     });
 
     delete snapshot.agents[agentId];
-    writeRuntimePolicySnapshotFile(snapshot);
+    writeRuntimePolicySnapshotFile(runtimeKind, snapshot);
     return;
   }
 
@@ -414,19 +461,19 @@ function restoreRuntimeExecPolicy(agentId = "main") {
     ask: "on-miss",
   };
 
-  writeExecApprovalsFile({
+  writeExecApprovalsFile(runtimeKind, {
     version: 1,
     defaults: execApprovals.defaults,
     agents,
   });
 }
 
-function ensureDurableExecPolicy(agentId = "main") {
-  snapshotRuntimePolicy(agentId);
-  const file = readExecApprovalsFile();
+function ensureDurableExecPolicy(runtimeKind: GuardRuntimeKind, agentId = DEFAULT_GUARD_AGENT_ID) {
+  snapshotRuntimePolicy(runtimeKind, agentId);
+  const file = readExecApprovalsFile(runtimeKind);
   const agents = { ...(file.agents ?? {}) };
   const current = agents[agentId] ?? {};
-  const { openclawConfigPath } = getGuardControlPlanePaths();
+  const { openclawConfigPath } = getGuardControlPlanePaths(runtimeKind);
   const config = readJsonFile<Record<string, unknown>>(openclawConfigPath, {});
 
   agents[agentId] = {
@@ -435,17 +482,17 @@ function ensureDurableExecPolicy(agentId = "main") {
     ask: "off",
   };
 
-  writeExecApprovalsFile({
+  writeExecApprovalsFile(runtimeKind, {
     version: 1,
     defaults: file.defaults,
     agents,
   });
 
-  ensureRuntimeExecPolicy(config);
+  ensureRuntimeExecPolicy(runtimeKind, config);
 }
 
-function readOpenClawConfigFile() {
-  const { openclawConfigPath } = getGuardControlPlanePaths();
+function readOpenClawConfigFile(runtimeKind: GuardRuntimeKind) {
+  const { openclawConfigPath } = getGuardControlPlanePaths(runtimeKind);
   if (!fs.existsSync(openclawConfigPath)) {
     return {
       exists: false,
@@ -509,14 +556,20 @@ function resolveGatewayTarget(config: Record<string, unknown>) {
   return { host, port };
 }
 
-async function probeRuntimeReachability(config: Record<string, unknown>) {
-  const { host, port } = resolveGatewayTarget(config);
+async function probeRuntimeReachability(
+  runtimeKind: GuardRuntimeKind,
+  config: Record<string, unknown>,
+) {
+  const override = readRuntimeProbeOverride(runtimeKind);
+  if (override) {
+    return override;
+  }
 
-  return await new Promise<{
-    runtimeReachable: boolean;
-    reason: string;
-    error: boolean;
-  }>((resolve) => {
+  const { host, port } = resolveGatewayTarget(config);
+  const runtimePrefix =
+    runtimeKind === "repo_scoped" ? "Repo-scoped OpenClaw" : "OpenClaw";
+
+  return await new Promise<GuardRuntimeProbeResult>((resolve) => {
     const socket = net.createConnection({ host, port });
     let settled = false;
 
@@ -538,7 +591,7 @@ async function probeRuntimeReachability(config: Record<string, unknown>) {
     socket.once("connect", () => {
       finish({
         runtimeReachable: true,
-        reason: "Repo-scoped OpenClaw runtime is reachable.",
+        reason: `${runtimePrefix} runtime is reachable.`,
         error: false,
       });
     });
@@ -546,8 +599,7 @@ async function probeRuntimeReachability(config: Record<string, unknown>) {
     socket.once("timeout", () => {
       finish({
         runtimeReachable: false,
-        reason:
-          "Repo-scoped OpenClaw config found, but the local runtime is not reachable.",
+        reason: `${runtimePrefix} config found, but the local runtime is not reachable.`,
         error: false,
       });
     });
@@ -556,12 +608,13 @@ async function probeRuntimeReachability(config: Record<string, unknown>) {
       if (
         error.code === "ECONNREFUSED" ||
         error.code === "EHOSTUNREACH" ||
-        error.code === "ETIMEDOUT"
+        error.code === "ETIMEDOUT" ||
+        error.code === "EPERM" ||
+        error.code === "EACCES"
       ) {
         finish({
           runtimeReachable: false,
-          reason:
-            "Repo-scoped OpenClaw config found, but the local runtime is not reachable.",
+          reason: `${runtimePrefix} config found, but the local runtime is not reachable.`,
           error: false,
         });
         return;
@@ -569,68 +622,361 @@ async function probeRuntimeReachability(config: Record<string, unknown>) {
 
       finish({
         runtimeReachable: false,
-        reason: error.message || "Could not inspect the repo-scoped OpenClaw runtime.",
+        reason: error.message || `Could not inspect the ${runtimePrefix.toLowerCase()} runtime.`,
         error: true,
       });
     });
   });
 }
 
-export async function scanRepoScopedGuardRuntime(): Promise<GuardScanRecord> {
-  const configState = readOpenClawConfigFile();
+function readRuntimeProbeOverride(runtimeKind: GuardRuntimeKind): GuardRuntimeProbeResult | null {
+  const raw = process.env.TESSERA_GUARD_RUNTIME_PROBE_OVERRIDE;
+  if (!raw || raw.trim().length === 0) {
+    return null;
+  }
+
+  const entries = raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  let scopedValue: string | null = null;
+  let fallbackValue: string | null = null;
+
+  for (const entry of entries) {
+    const [maybeKind, maybeState] = entry.includes("=")
+      ? entry.split("=", 2)
+      : [null, entry];
+    const state = maybeState?.trim().toLowerCase() ?? "";
+    if (state.length === 0) {
+      continue;
+    }
+    if (maybeKind === null) {
+      fallbackValue = state;
+      continue;
+    }
+    const kind = maybeKind.trim();
+    if (kind === runtimeKind) {
+      scopedValue = state;
+    }
+  }
+
+  const value = scopedValue ?? fallbackValue;
+  if (!value) {
+    return null;
+  }
+
+  const runtimePrefix = runtimeKind === "repo_scoped" ? "Repo-scoped OpenClaw" : "OpenClaw";
+  if (value === "reachable" || value === "up") {
+    return {
+      runtimeReachable: true,
+      reason: `${runtimePrefix} runtime is reachable.`,
+      error: false,
+    };
+  }
+
+  if (value === "runtime_not_reachable" || value === "not_reachable" || value === "down") {
+    return {
+      runtimeReachable: false,
+      reason: `${runtimePrefix} config found, but the local runtime is not reachable.`,
+      error: false,
+    };
+  }
+
+  if (value === "error") {
+    return {
+      runtimeReachable: false,
+      reason: `Could not inspect the ${runtimePrefix.toLowerCase()} runtime.`,
+      error: true,
+    };
+  }
+
+  return null;
+}
+function discoverAgents(config: Record<string, unknown>) {
+  const discovered = new Set<string>([DEFAULT_GUARD_AGENT_ID]);
+  const agentsNode = (config.agents as Record<string, unknown> | undefined) ?? {};
+  const entriesNode = (agentsNode.entries as Record<string, unknown> | undefined) ?? {};
+
+  for (const id of Object.keys(entriesNode)) {
+    if (id.trim().length > 0) {
+      discovered.add(id.trim());
+    }
+  }
+
+  for (const id of Object.keys(agentsNode)) {
+    if (id === "defaults" || id === "entries") {
+      continue;
+    }
+    if (id.trim().length > 0) {
+      discovered.add(id.trim());
+    }
+  }
+
+  return Array.from(discovered).sort((a, b) =>
+    a === DEFAULT_GUARD_AGENT_ID
+      ? -1
+      : b === DEFAULT_GUARD_AGENT_ID
+        ? 1
+        : a.localeCompare(b),
+  );
+}
+
+async function discoverRuntime(runtimeKind: GuardRuntimeKind): Promise<GuardDiscoveredRuntime> {
+  const paths = getGuardControlPlanePaths(runtimeKind);
+  const configState = readOpenClawConfigFile(runtimeKind);
 
   if (!configState.exists) {
     return {
-      connectionStatus: "disconnected",
+      paths,
       configFound: false,
+      config: {},
+      configError: null,
       runtimeReachable: false,
+      runtimeReason:
+        runtimeKind === "repo_scoped"
+          ? "No repo-scoped OpenClaw config found. Start the local demo runtime or create .openclaw-probe-home first."
+          : "No standard local OpenClaw config found under ~/.openclaw.",
+      runtimeProbeError: false,
       pluginStatus: "unknown",
-      pluginTrustStatus: "trusted_only",
-      attachedAgentId: null,
-      reason:
-        "No repo-scoped OpenClaw config found. Start the local runtime or create .openclaw-probe-home first.",
+      pluginTrust: {
+        trustStatus: "trusted_only",
+        expectedPlugins: [...TRUSTED_DEMO_PLUGINS],
+        allowedPlugins: [],
+        unexpectedPlugins: [],
+      },
+      availableAgents: [DEFAULT_GUARD_AGENT_ID],
     };
   }
 
   if (configState.error) {
     return {
-      connectionStatus: "error",
+      paths,
       configFound: true,
+      config: {},
+      configError: configState.error,
       runtimeReachable: false,
+      runtimeReason: `OpenClaw config is unreadable: ${configState.error}`,
+      runtimeProbeError: true,
       pluginStatus: "unknown",
-      pluginTrustStatus: "trusted_only",
-      attachedAgentId: null,
-      reason: `Repo-scoped OpenClaw config is unreadable: ${configState.error}`,
+      pluginTrust: {
+        trustStatus: "trusted_only",
+        expectedPlugins: [...TRUSTED_DEMO_PLUGINS],
+        allowedPlugins: [],
+        unexpectedPlugins: [],
+      },
+      availableAgents: [DEFAULT_GUARD_AGENT_ID],
     };
   }
 
   const pluginLoaded = getPluginLoaded(configState.config);
   const pluginTrust = getPluginTrust(configState.config);
-  const reachability = await probeRuntimeReachability(configState.config);
+  const reachability = await probeRuntimeReachability(runtimeKind, configState.config);
+  const availableAgents = discoverAgents(configState.config);
 
-  if (!reachability.runtimeReachable) {
+  return {
+    paths,
+    configFound: true,
+    config: configState.config,
+    configError: null,
+    runtimeReachable: reachability.runtimeReachable,
+    runtimeReason: reachability.reason,
+    runtimeProbeError: reachability.error,
+    pluginStatus: pluginLoaded ? "plugin_loaded" : "plugin_missing",
+    pluginTrust,
+    availableAgents,
+  };
+}
+
+function buildNoOpenClawFoundScan(): GuardScanRecord {
+  return {
+    connectionStatus: "no_openclaw_found",
+    installationFound: false,
+    configFound: false,
+    runtimeReachable: false,
+    runtimeKind: null,
+    runtimeLabel: null,
+    availableRuntimeKinds: [],
+    runtimeSelectionRequired: false,
+    pluginStatus: "unknown",
+    pluginTrustStatus: "trusted_only",
+    availableAgents: [],
+    defaultAttachableAgentId: null,
+    agentSelectionRequired: false,
+    autoAttached: false,
+    attachedAgentId: null,
+    reason: "No local OpenClaw installation detected.",
+  };
+}
+
+function buildScanRecordFromRuntime(
+  runtime: GuardDiscoveredRuntime,
+  selection: GuardSelection,
+  availableRuntimeKinds: GuardRuntimeKind[],
+  runtimeSelectionRequired: boolean,
+): GuardScanRecord {
+  const requestedAgentId = selection.agentId?.trim() || null;
+  const defaultAttachableAgentId = runtime.availableAgents[0] ?? null;
+  const hasExactRequestedAgent =
+    requestedAgentId !== null && runtime.availableAgents.includes(requestedAgentId);
+  const autoAttachable = runtime.availableAgents.length === 1;
+  const attachedAgentId =
+    hasExactRequestedAgent
+      ? requestedAgentId
+      : autoAttachable
+        ? runtime.availableAgents[0] ?? null
+        : null;
+  const agentSelectionRequired = runtime.runtimeReachable && attachedAgentId === null;
+
+  if (!runtime.configFound) {
     return {
-      connectionStatus: reachability.error ? "error" : "local_config_found",
+      connectionStatus: "no_openclaw_found",
+      installationFound: false,
+      configFound: false,
+      runtimeReachable: false,
+      runtimeKind: runtime.paths.runtimeKind,
+      runtimeLabel: runtime.paths.runtimeLabel,
+      availableRuntimeKinds,
+      runtimeSelectionRequired,
+      pluginStatus: "unknown",
+      pluginTrustStatus: "trusted_only",
+      availableAgents: runtime.availableAgents,
+      defaultAttachableAgentId,
+      agentSelectionRequired: false,
+      autoAttached: false,
+      attachedAgentId: null,
+      reason: runtime.runtimeReason,
+    };
+  }
+
+  if (runtime.configError) {
+    return {
+      connectionStatus: "error",
+      installationFound: true,
       configFound: true,
       runtimeReachable: false,
-      pluginStatus: pluginLoaded ? "plugin_loaded" : "plugin_missing",
-      pluginTrustStatus: pluginTrust.trustStatus,
+      runtimeKind: runtime.paths.runtimeKind,
+      runtimeLabel: runtime.paths.runtimeLabel,
+      availableRuntimeKinds,
+      runtimeSelectionRequired,
+      pluginStatus: "unknown",
+      pluginTrustStatus: "trusted_only",
+      availableAgents: runtime.availableAgents,
+      defaultAttachableAgentId,
+      agentSelectionRequired: false,
+      autoAttached: false,
       attachedAgentId: null,
-      reason: reachability.reason,
+      reason: runtime.runtimeReason,
+    };
+  }
+
+  if (!runtime.runtimeReachable) {
+    return {
+      connectionStatus: runtime.runtimeProbeError ? "error" : "runtime_not_reachable",
+      installationFound: true,
+      configFound: true,
+      runtimeReachable: false,
+      runtimeKind: runtime.paths.runtimeKind,
+      runtimeLabel: runtime.paths.runtimeLabel,
+      availableRuntimeKinds,
+      runtimeSelectionRequired,
+      pluginStatus: runtime.pluginStatus,
+      pluginTrustStatus: runtime.pluginTrust.trustStatus,
+      availableAgents: runtime.availableAgents,
+      defaultAttachableAgentId,
+      agentSelectionRequired: false,
+      autoAttached: false,
+      attachedAgentId: null,
+      reason:
+        runtime.paths.runtimeKind === "standard_local"
+          ? "OpenClaw detected, runtime not reachable."
+          : "Repo-scoped OpenClaw config found, but runtime is not reachable.",
+    };
+  }
+
+  if (agentSelectionRequired) {
+    return {
+      connectionStatus: "multiple_agents_found",
+      installationFound: true,
+      configFound: true,
+      runtimeReachable: true,
+      runtimeKind: runtime.paths.runtimeKind,
+      runtimeLabel: runtime.paths.runtimeLabel,
+      availableRuntimeKinds,
+      runtimeSelectionRequired,
+      pluginStatus: runtime.pluginStatus,
+      pluginTrustStatus: runtime.pluginTrust.trustStatus,
+      availableAgents: runtime.availableAgents,
+      defaultAttachableAgentId,
+      agentSelectionRequired: true,
+      autoAttached: false,
+      attachedAgentId: null,
+      reason: "Multiple local agents found. Choose which agent Tessera should attach to.",
     };
   }
 
   return {
-    connectionStatus: "runtime_reachable",
+    connectionStatus: attachedAgentId ? "attached" : "runtime_reachable",
+    installationFound: true,
     configFound: true,
     runtimeReachable: true,
-    pluginStatus: pluginLoaded ? "plugin_loaded" : "plugin_missing",
-    pluginTrustStatus: pluginTrust.trustStatus,
-    attachedAgentId: "main",
-    reason: pluginLoaded
-      ? "Attached to repo-scoped OpenClaw agent main."
-      : "Repo-scoped OpenClaw runtime is reachable, but tessera-guard-local is not loaded.",
+    runtimeKind: runtime.paths.runtimeKind,
+    runtimeLabel: runtime.paths.runtimeLabel,
+    availableRuntimeKinds,
+    runtimeSelectionRequired,
+    pluginStatus: runtime.pluginStatus,
+    pluginTrustStatus: runtime.pluginTrust.trustStatus,
+    availableAgents: runtime.availableAgents,
+    defaultAttachableAgentId,
+    agentSelectionRequired: false,
+    autoAttached: !hasExactRequestedAgent && autoAttachable,
+    attachedAgentId: attachedAgentId ?? null,
+    reason: attachedAgentId
+      ? `Connected to ${runtime.paths.runtimeLabel} OpenClaw agent ${attachedAgentId}.`
+      : "OpenClaw runtime is reachable.",
   };
+}
+
+async function scanGuardRuntime(selection: GuardSelection = {}): Promise<{
+  scan: GuardScanRecord;
+  runtime: GuardDiscoveredRuntime | null;
+}> {
+  const repoScoped = await discoverRuntime("repo_scoped");
+  const standardLocal = await discoverRuntime("standard_local");
+  const discovered = [repoScoped, standardLocal];
+  const configFoundRuntimes = discovered.filter((runtime) => runtime.configFound);
+  const availableRuntimeKinds = configFoundRuntimes.map((runtime) => runtime.paths.runtimeKind);
+
+  if (configFoundRuntimes.length === 0) {
+    return { scan: buildNoOpenClawFoundScan(), runtime: null };
+  }
+
+  const requestedRuntimeKind = selection.runtimeKind ?? null;
+  const requestedRuntime = requestedRuntimeKind
+    ? configFoundRuntimes.find((runtime) => runtime.paths.runtimeKind === requestedRuntimeKind) ??
+      null
+    : null;
+  const reachableRuntimes = configFoundRuntimes.filter((runtime) => runtime.runtimeReachable);
+  const runtimeSelectionRequired = requestedRuntime === null && reachableRuntimes.length > 1;
+  const selectedRuntime =
+    requestedRuntime ??
+    (reachableRuntimes.length === 1
+      ? reachableRuntimes[0]
+      : configFoundRuntimes.find((runtime) => runtime.paths.runtimeKind === "standard_local") ??
+        configFoundRuntimes[0]);
+  const scan = buildScanRecordFromRuntime(
+    selectedRuntime,
+    selection,
+    availableRuntimeKinds,
+    runtimeSelectionRequired,
+  );
+  if (runtimeSelectionRequired && scan.connectionStatus === "attached") {
+    scan.connectionStatus = "runtime_reachable";
+    scan.reason = "Multiple local OpenClaw runtimes found. Select a runtime before attaching.";
+    scan.attachedAgentId = null;
+    scan.autoAttached = false;
+  }
+
+  return { scan, runtime: selectedRuntime };
 }
 
 export function getCredentialStatus(
@@ -672,7 +1018,7 @@ function computeAuditHash(parsed: Record<string, unknown>) {
 }
 
 function readRecentGuardActions() {
-  const { probeLogPath } = getGuardControlPlanePaths();
+  const { probeLogPath } = getGuardControlPlanePaths("repo_scoped");
   if (!fs.existsSync(probeLogPath)) {
     return {
       actions: [] as GuardActionRecord[],
@@ -790,14 +1136,19 @@ function readRecentGuardActions() {
   };
 }
 
-export async function readGuardControlPlaneState(): Promise<GuardControlPlaneState> {
-  const runtimeScan = await scanRepoScopedGuardRuntime();
-  const { openclawConfigPath } = getGuardControlPlanePaths();
-  const config = readJsonFile<Record<string, unknown>>(openclawConfigPath, {});
-  const execApprovals = readExecApprovalsFile();
-  const pluginTrust = getPluginTrust(config);
+export async function readGuardControlPlaneState(
+  selection: GuardSelection = {},
+): Promise<GuardControlPlaneState> {
+  const discovery = await scanGuardRuntime(selection);
+  const runtimeScan = discovery.scan;
+  const selectedRuntimeKind = runtimeScan.runtimeKind ?? "repo_scoped";
+  const paths = getGuardControlPlanePaths(selectedRuntimeKind);
+  const config = readJsonFile<Record<string, unknown>>(paths.openclawConfigPath, {});
+  const execApprovals = readExecApprovalsFile(selectedRuntimeKind);
+  const pluginTrust =
+    discovery.runtime?.pluginTrust ?? getPluginTrust(config);
   const auditAndActions = readRecentGuardActions();
-  const agentId = runtimeScan.attachedAgentId ?? "main";
+  const agentId = runtimeScan.attachedAgentId ?? selection.agentId ?? DEFAULT_GUARD_AGENT_ID;
   const credentialStoreState = readCredentialStoreState();
   const store = credentialStoreState.store;
   const credential = store.agents[agentId] ?? null;
@@ -808,11 +1159,11 @@ export async function readGuardControlPlaneState(): Promise<GuardControlPlaneSta
       agentId,
       runtime: "OpenClaw",
       plugin: "tessera-guard-local",
-      session: runtimeScan.runtimeReachable ? "local loopback" : "not attached",
-      connected: runtimeScan.runtimeReachable,
+      session: runtimeScan.attachedAgentId ? "local loopback" : "not attached",
+      connected: runtimeScan.attachedAgentId !== null,
       pluginLoaded: runtimeScan.pluginStatus === "plugin_loaded",
       durableExecPolicy:
-        runtimeScan.runtimeReachable &&
+        runtimeScan.attachedAgentId !== null &&
         isDurableExecApprovalsEnabled(execApprovals, agentId) &&
         isRuntimeExecPolicyEnabled(config),
     },
@@ -832,13 +1183,17 @@ function normalizeCredentialActions(actions?: string[]) {
   );
 }
 
-export async function grantDemoCredential(agentId = "main", actions?: string[]) {
+export async function grantDemoCredential(
+  agentId = DEFAULT_GUARD_AGENT_ID,
+  actions?: string[],
+  runtimeKind: GuardRuntimeKind = "repo_scoped",
+) {
   const store = readCredentialStore();
   const now = Math.floor(Date.now() / 1000);
   const normalizedActions = normalizeCredentialActions(actions);
 
   if (normalizedActions.includes(EXEC_ACTION)) {
-    ensureDurableExecPolicy(agentId);
+    ensureDurableExecPolicy(runtimeKind, agentId);
   }
 
   store.agents[agentId] = {
@@ -854,10 +1209,13 @@ export async function grantDemoCredential(agentId = "main", actions?: string[]) 
   };
 
   writeCredentialStore(store);
-  return await readGuardControlPlaneState();
+  return await readGuardControlPlaneState({ runtimeKind, agentId });
 }
 
-export async function revokeDemoCredential(agentId = "main") {
+export async function revokeDemoCredential(
+  agentId = DEFAULT_GUARD_AGENT_ID,
+  runtimeKind: GuardRuntimeKind = "repo_scoped",
+) {
   const store = readCredentialStore();
   const credential = store.agents[agentId];
 
@@ -867,23 +1225,26 @@ export async function revokeDemoCredential(agentId = "main") {
     credential.revokedAt = Math.floor(Date.now() / 1000);
     writeCredentialStore(store);
     if (includesExecScope) {
-      restoreRuntimeExecPolicy(agentId);
+      restoreRuntimeExecPolicy(runtimeKind, agentId);
     }
   }
 
-  return await readGuardControlPlaneState();
+  return await readGuardControlPlaneState({ runtimeKind, agentId });
 }
 
-export async function clearDemoCredential(agentId = "main") {
+export async function clearDemoCredential(
+  agentId = DEFAULT_GUARD_AGENT_ID,
+  runtimeKind: GuardRuntimeKind = "repo_scoped",
+) {
   const store = readCredentialStore();
   const credential = store.agents[agentId];
   delete store.agents[agentId];
   writeCredentialStore(store);
   if (
     credential?.scope.actions.includes(EXEC_ACTION) ||
-    readRuntimePolicySnapshotFile().agents[agentId]
+    readRuntimePolicySnapshotFile(runtimeKind).agents[agentId]
   ) {
-    restoreRuntimeExecPolicy(agentId);
+    restoreRuntimeExecPolicy(runtimeKind, agentId);
   }
-  return await readGuardControlPlaneState();
+  return await readGuardControlPlaneState({ runtimeKind, agentId });
 }
