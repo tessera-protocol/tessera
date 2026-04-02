@@ -7,6 +7,8 @@ This quickstart shows the current Tessera Guard milestone:
 - run it again -> still allowed, with no one-shot approval
 - revoke the credential -> the same command is blocked again immediately
 
+Tessera Guard now also covers `message.send` in OpenClaw with the same scoped grant / revoke model, enforced at the real `message_sending` hook. That path is real at the hook boundary today, but this quickstart remains focused on the fully live `exec.shell` loop.
+
 This is a local demo flow for OpenClaw `main`.
 
 ## What You Need
@@ -202,4 +204,4 @@ What is still local or stubbed:
 - no issuer service
 - no VC / ZK verification
 - no persistent revocation registry
-- `message.send` is only an initial hook-level path, not a full live outbound demo
+- `message.send` is enforced at the real hook boundary, but not yet shown here as a full live outbound demo
