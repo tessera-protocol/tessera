@@ -10,6 +10,13 @@ import {
 } from "react";
 
 export type GuardCredentialStatus = "none" | "valid" | "revoked" | "expired";
+export type GuardConnectionStatus =
+  | "disconnected"
+  | "scanning"
+  | "local_config_found"
+  | "runtime_reachable"
+  | "error";
+export type GuardPluginStatus = "plugin_loaded" | "plugin_missing" | "unknown";
 
 export type GuardRuntimeRecord = {
   agentId: string;
@@ -19,6 +26,15 @@ export type GuardRuntimeRecord = {
   connected: boolean;
   pluginLoaded: boolean;
   durableExecPolicy: boolean;
+};
+
+export type GuardScanRecord = {
+  connectionStatus: GuardConnectionStatus;
+  configFound: boolean;
+  runtimeReachable: boolean;
+  pluginStatus: GuardPluginStatus;
+  attachedAgentId: string | null;
+  reason: string | null;
 };
 
 export type GuardCredentialRecord = {
@@ -45,21 +61,32 @@ export type GuardActionRecord = {
 };
 
 type GuardDashboardState = {
+  scan: GuardScanRecord;
   runtime: GuardRuntimeRecord;
   credential: GuardCredentialRecord | null;
   credentialStatus: GuardCredentialStatus;
+  credentialStoreError: string | null;
   actions: GuardActionRecord[];
 };
 
 type GuardDashboardContextValue = GuardDashboardState & {
   loading: boolean;
   refresh: () => Promise<void>;
+  scanForLocalAgents: () => Promise<void>;
   grantDemoCredential: () => Promise<void>;
   revokeDemoCredential: () => Promise<void>;
   clearDemoCredential: () => Promise<void>;
 };
 
 const defaultState: GuardDashboardState = {
+  scan: {
+    connectionStatus: "disconnected",
+    configFound: false,
+    runtimeReachable: false,
+    pluginStatus: "unknown",
+    attachedAgentId: null,
+    reason: "No local OpenClaw runtime attached.",
+  },
   runtime: {
     agentId: "main",
     runtime: "OpenClaw",
@@ -71,6 +98,7 @@ const defaultState: GuardDashboardState = {
   },
   credential: null,
   credentialStatus: "none",
+  credentialStoreError: null,
   actions: [],
 };
 
@@ -83,6 +111,19 @@ async function fetchState() {
 
   if (!response.ok) {
     throw new Error("Failed to load guard state");
+  }
+
+  return (await response.json()) as GuardDashboardState;
+}
+
+async function scanState() {
+  const response = await fetch("/api/guard/scan", {
+    method: "POST",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to scan local runtime");
   }
 
   return (await response.json()) as GuardDashboardState;
@@ -106,7 +147,7 @@ async function postCredentialAction(action: "grant" | "revoke" | "clear") {
 
 export function GuardDashboardProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GuardDashboardState>(defaultState);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const refresh = async () => {
     const next = await fetchState();
@@ -115,35 +156,38 @@ export function GuardDashboardProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-
-    const boot = async () => {
-      try {
-        const next = await fetchState();
-        if (!cancelled) {
-          setState(next);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void boot();
+    if (state.scan.connectionStatus !== "runtime_reachable") {
+      return () => {
+        cancelled = true;
+      };
+    }
 
     const interval = window.setInterval(() => {
-      void fetchState().then((next) => {
-        if (!cancelled) {
-          setState(next);
-        }
-      });
-    }, 2500);
+      void fetchState()
+        .then((next) => {
+          if (!cancelled) {
+            setState(next);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setState((current) => ({
+              ...current,
+              scan: {
+                ...current.scan,
+                connectionStatus: "error",
+                reason: "Failed to refresh the repo-scoped OpenClaw runtime state.",
+              },
+            }));
+          }
+        });
+    }, 3000);
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [state.scan.connectionStatus]);
 
   const value = useMemo<GuardDashboardContextValue>(
     () => ({
@@ -153,6 +197,31 @@ export function GuardDashboardProvider({ children }: { children: ReactNode }) {
         setLoading(true);
         try {
           await refresh();
+        } finally {
+          setLoading(false);
+        }
+      },
+      scanForLocalAgents: async () => {
+        setLoading(true);
+        setState((current) => ({
+          ...current,
+          scan: {
+            ...current.scan,
+            connectionStatus: "scanning",
+            reason: "Scanning repo-scoped OpenClaw runtime...",
+          },
+        }));
+        try {
+          setState(await scanState());
+        } catch {
+          setState((current) => ({
+            ...current,
+            scan: {
+              ...current.scan,
+              connectionStatus: "error",
+              reason: "Could not scan the repo-scoped OpenClaw runtime.",
+            },
+          }));
         } finally {
           setLoading(false);
         }

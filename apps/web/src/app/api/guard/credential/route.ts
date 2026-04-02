@@ -18,11 +18,11 @@ export async function POST(request: NextRequest) {
 
   switch (body.action) {
     case "grant":
-      return NextResponse.json(grantDemoCredential(agentId));
+      return NextResponse.json(await grantDemoCredential(agentId));
     case "revoke":
-      return NextResponse.json(revokeDemoCredential(agentId));
+      return NextResponse.json(await revokeDemoCredential(agentId));
     case "clear":
-      return NextResponse.json(clearDemoCredential(agentId));
+      return NextResponse.json(await clearDemoCredential(agentId));
     default:
       return NextResponse.json(
         { error: "Unknown credential action" },
