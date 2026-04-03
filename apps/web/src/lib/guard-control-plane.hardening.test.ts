@@ -8,7 +8,7 @@ import {
   grantDemoCredential,
   readGuardControlPlaneState,
   revokeDemoCredential,
-} from "./guard-control-plane";
+} from "./guard-control-plane.ts";
 
 const cleanupPaths: string[] = [];
 const envKeys = [

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from "next/server.js";
 import { readGuardControlPlaneState } from "@/lib/guard-control-plane";
 
 export const runtime = "nodejs";

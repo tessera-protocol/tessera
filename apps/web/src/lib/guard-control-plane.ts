@@ -481,7 +481,7 @@ function getPluginLoaded(config: Record<string, unknown>) {
 function getPluginTrust(config: Record<string, unknown>): GuardPluginTrustRecord {
   const plugins = (config.plugins as { allow?: unknown[] } | undefined) ?? {};
   const allowedPlugins = Array.isArray(plugins.allow) ? plugins.allow.map(String) : [];
-  const expectedPlugins = [...TRUSTED_DEMO_PLUGINS];
+  const expectedPlugins: string[] = [...TRUSTED_DEMO_PLUGINS];
   const unexpectedPlugins = allowedPlugins.filter(
     (pluginId) => !expectedPlugins.includes(pluginId),
   );
