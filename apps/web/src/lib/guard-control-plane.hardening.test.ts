@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -116,6 +117,12 @@ function readJson(filePath: string) {
   return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
 }
 
+function getProbeLogPath(pluginDir: string, openclawHomeDir: string) {
+  const runtimeHome = path.resolve(openclawHomeDir);
+  const suffix = crypto.createHash("sha256").update(runtimeHome, "utf8").digest("hex").slice(0, 12);
+  return path.join(pluginDir, `probe-events-${suffix}.jsonl`);
+}
+
 test("grant widens exec for the demo flow and revoke restores a non-permissive baseline", async () => {
   const fixture = createFixture();
 
@@ -224,9 +231,10 @@ test("scan reports untrusted plugin expansion when non-allowlisted plugins are e
 
 test("legacy decision logs are surfaced as unverified audit history", async () => {
   const fixture = createFixture();
-  writeJson(path.join(path.dirname(fixture.credentialPath), "probe-events.jsonl"), null);
+  const logPath = getProbeLogPath(fixture.pluginDir, fixture.openclawHomeDir);
+  writeJson(logPath, null);
   writeFileSync(
-    path.join(path.dirname(fixture.credentialPath), "probe-events.jsonl"),
+    logPath,
     `${JSON.stringify({
       ts: new Date().toISOString(),
       hook: "guard_decision",
@@ -243,6 +251,29 @@ test("legacy decision logs are surfaced as unverified audit history", async () =
   assert.equal(state.audit.integrity, "legacy");
   assert.equal(state.actions.length, 1);
   assert.equal(state.actions[0]?.evidenceId, "legacy-unverified");
+});
+
+test("detached discovery shows no history even if another runtime log exists", async () => {
+  const fixture = createDiscoveryFixture();
+  const repoLogPath = getProbeLogPath(fixture.pluginDir, fixture.repoOpenclawHomeDir);
+  writeFileSync(
+    repoLogPath,
+    `${JSON.stringify({
+      ts: new Date().toISOString(),
+      hook: "guard_decision",
+      action: "exec.shell",
+      allowed: true,
+      message: "repo-only entry",
+      agentId: "main",
+    })}\n`,
+    "utf8",
+  );
+
+  const state = await readGuardControlPlaneState();
+
+  assert.equal(state.scan.connectionStatus, "no_openclaw_found");
+  assert.equal(state.actions.length, 0);
+  assert.equal(state.audit.integrity, "empty");
 });
 
 test("scan reports no_openclaw_found when neither standard-local nor repo-scoped config exists", async () => {

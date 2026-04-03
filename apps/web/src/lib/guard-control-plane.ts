@@ -188,15 +188,32 @@ type GuardRuntimeProbeResult = {
   error: boolean;
 };
 
+function resolveOpenClawHomeDir(runtimeKind: GuardRuntimeKind) {
+  const repoRoot = resolveRepoRoot();
+  const repoScopedHomeDir =
+    process.env.TESSERA_OPENCLAW_HOME_DIR ??
+    path.join(repoRoot, ".openclaw-probe-home", ".openclaw");
+  const standardHomeDir =
+    process.env.TESSERA_STANDARD_OPENCLAW_HOME_DIR ?? path.join(os.homedir(), ".openclaw");
+
+  return runtimeKind === "repo_scoped" ? repoScopedHomeDir : standardHomeDir;
+}
+
+function resolveOpenClawHomeForLog(runtimeKind: GuardRuntimeKind) {
+  return path.resolve(resolveOpenClawHomeDir(runtimeKind));
+}
+
+function getProbeLogFileNameForRuntime(runtimeKind: GuardRuntimeKind) {
+  const runtimeHome = resolveOpenClawHomeForLog(runtimeKind);
+  const suffix = crypto.createHash("sha256").update(runtimeHome, "utf8").digest("hex").slice(0, 12);
+  return `probe-events-${suffix}.jsonl`;
+}
+
 function getGuardControlPlanePaths(runtimeKind: GuardRuntimeKind): GuardControlPlanePaths {
   const repoRoot = resolveRepoRoot();
   const pluginDir =
     process.env.TESSERA_GUARD_PLUGIN_DIR ?? path.join(repoRoot, "openclaw-guard-plugin");
-  const repoScopedHomeDir =
-    process.env.TESSERA_OPENCLAW_HOME_DIR ?? path.join(repoRoot, ".openclaw-probe-home", ".openclaw");
-  const standardHomeDir =
-    process.env.TESSERA_STANDARD_OPENCLAW_HOME_DIR ?? path.join(os.homedir(), ".openclaw");
-  const openclawHomeDir = runtimeKind === "repo_scoped" ? repoScopedHomeDir : standardHomeDir;
+  const openclawHomeDir = resolveOpenClawHomeDir(runtimeKind);
   const runtimeLabel =
     runtimeKind === "repo_scoped" ? "repo-scoped demo runtime" : "standard local runtime";
 
@@ -207,7 +224,7 @@ function getGuardControlPlanePaths(runtimeKind: GuardRuntimeKind): GuardControlP
     pluginDir,
     openclawHomeDir,
     credentialsPath: path.join(pluginDir, "local-credentials.json"),
-    probeLogPath: path.join(pluginDir, "probe-events.jsonl"),
+    probeLogPath: path.join(pluginDir, getProbeLogFileNameForRuntime(runtimeKind)),
     openclawConfigPath: path.join(openclawHomeDir, "openclaw.json"),
     execApprovalsPath: path.join(openclawHomeDir, "exec-approvals.json"),
     runtimePolicySnapshotPath: path.join(
@@ -1007,6 +1024,7 @@ function computeAuditHash(parsed: Record<string, unknown>) {
         seq: parsed.seq ?? null,
         prevHash: parsed.prevHash ?? null,
         ts: parsed.ts ?? null,
+        openclawHome: parsed.openclawHome ?? null,
         hook: parsed.hook ?? null,
         action: parsed.action ?? null,
         allowed: parsed.allowed ?? null,
@@ -1021,8 +1039,23 @@ function computeAuditHash(parsed: Record<string, unknown>) {
     .digest("hex");
 }
 
-function readRecentGuardActions() {
-  const { probeLogPath } = getGuardControlPlanePaths("repo_scoped");
+function readRecentGuardActions(runtimeKind: GuardRuntimeKind | null) {
+  if (!runtimeKind) {
+    return {
+      actions: [] as GuardActionRecord[],
+      audit: {
+        integrity: "empty" as GuardAuditIntegrityStatus,
+        totalEvents: 0,
+        verifiedEvents: 0,
+        invalidEvents: 0,
+        lastHash: null,
+        lastSeq: 0,
+        reason: null,
+      },
+    };
+  }
+
+  const { probeLogPath } = getGuardControlPlanePaths(runtimeKind);
   if (!fs.existsSync(probeLogPath)) {
     return {
       actions: [] as GuardActionRecord[],
@@ -1151,7 +1184,9 @@ export async function readGuardControlPlaneState(
   const execApprovals = readExecApprovalsFile(selectedRuntimeKind);
   const pluginTrust =
     discovery.runtime?.pluginTrust ?? getPluginTrust(config);
-  const auditAndActions = readRecentGuardActions();
+  const auditAndActions = readRecentGuardActions(
+    runtimeScan.attachedAgentId ? selectedRuntimeKind : null,
+  );
   const agentId = runtimeScan.attachedAgentId ?? selection.agentId ?? DEFAULT_GUARD_AGENT_ID;
   const credentialStoreState = readCredentialStoreState();
   const store = credentialStoreState.store;

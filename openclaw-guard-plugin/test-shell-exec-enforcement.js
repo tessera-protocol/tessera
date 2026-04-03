@@ -1,11 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const pluginDir = path.dirname(fileURLToPath(import.meta.url));
 const credentialsPath = path.join(pluginDir, "local-credentials.json");
-const logPath = path.join(pluginDir, "probe-events.jsonl");
 const probeHome = process.env.OPENCLAW_HOME ?? path.join(path.dirname(pluginDir), ".openclaw-probe-home");
+const logPath = path.join(
+  pluginDir,
+  `probe-events-${crypto.createHash("sha256").update(path.resolve(probeHome, ".openclaw"), "utf8").digest("hex").slice(0, 12)}.jsonl`,
+);
 
 process.env.OPENCLAW_HOME = probeHome;
 
