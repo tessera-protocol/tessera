@@ -455,6 +455,8 @@ test('credential issuance requires holderPublicKey', async () => {
 test('issuer resolves loopback bind by default and rejects wider binding without explicit opt-in', () => {
   assert.equal(resolveIssuerBindHost({}), '127.0.0.1');
   assert.equal(resolveIssuerBindHost({ ISSUER_HOST: '127.0.0.1' }), '127.0.0.1');
+  assert.equal(resolveIssuerBindHost({ ISSUER_HOST: '::1' }), '::1');
+  assert.equal(resolveIssuerBindHost({ ISSUER_HOST: '[::1]' }), '::1');
   assert.throws(
     () => resolveIssuerBindHost({ ISSUER_HOST: '0.0.0.0' }),
     /ISSUER_ALLOW_NON_LOCAL_BIND=1/,
@@ -513,6 +515,40 @@ test('issuer write routes reject non-loopback requests even if the process is re
       },
     });
     assert.equal(localIssue.status, 201);
+
+    const localIssueWithoutOrigin = await requestJson(baseUrl, '/credential/issue', {
+      method: 'POST',
+      headers: {
+        host: '127.0.0.1:3001',
+      },
+      body: {
+        commitment: new Identity().commitment.toString(),
+        anchorType: 'bank-account',
+        anchorHash: 'local-issue-without-origin',
+        tier: 1,
+        jurisdiction: 'EU',
+        holderPublicKey: holderKeys.publicKeyPem,
+      },
+    });
+    assert.equal(localIssueWithoutOrigin.status, 201);
+
+    const localIpv6HostIssue = await requestJson(baseUrl, '/credential/issue', {
+      method: 'POST',
+      headers: {
+        host: '[::1]:3001',
+        origin: 'http://[::1]:3000',
+        'x-forwarded-for': '::1',
+      },
+      body: {
+        commitment: new Identity().commitment.toString(),
+        anchorType: 'bank-account',
+        anchorHash: 'local-ipv6-host-issue',
+        tier: 1,
+        jurisdiction: 'EU',
+        holderPublicKey: holderKeys.publicKeyPem,
+      },
+    });
+    assert.equal(localIpv6HostIssue.status, 201);
 
     const issuerKeys = JSON.parse(
       readFileSync(join(dataDir, 'issuer-keys.json'), 'utf8'),
@@ -573,6 +609,17 @@ test('issuer CORS is limited to local allowlist and never returns wildcard origi
     assert.equal(allowed.status, 204);
     assert.equal(allowed.headers['access-control-allow-origin'], 'http://127.0.0.1:3000');
     assert.notEqual(allowed.headers['access-control-allow-origin'], '*');
+
+    const allowedIpv6 = await requestText(baseUrl, '/health', {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'http://[::1]:3000',
+        'access-control-request-method': 'POST',
+      },
+    });
+    assert.equal(allowedIpv6.status, 204);
+    assert.equal(allowedIpv6.headers['access-control-allow-origin'], 'http://[::1]:3000');
+    assert.notEqual(allowedIpv6.headers['access-control-allow-origin'], '*');
 
     const denied = await requestText(baseUrl, '/health', {
       method: 'OPTIONS',

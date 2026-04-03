@@ -1,9 +1,18 @@
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const DEFAULT_ISSUER_HOST = '127.0.0.1';
-const DEFAULT_CORS_ORIGINS = ['http://127.0.0.1:3000', 'http://localhost:3000'] as const;
+const DEFAULT_CORS_ORIGINS = [
+  'http://127.0.0.1:3000',
+  'http://localhost:3000',
+  'http://[::1]:3000',
+] as const;
 
 function normalizeHost(value: string | null | undefined) {
-  return value?.trim().toLowerCase() ?? '';
+  const normalized = value?.trim().toLowerCase() ?? '';
+  if (normalized.startsWith('[') && normalized.endsWith(']')) {
+    return normalized.slice(1, -1);
+  }
+
+  return normalized;
 }
 
 function extractHostname(value: string | null) {
@@ -14,7 +23,11 @@ function extractHostname(value: string | null) {
   try {
     return new URL(value).hostname;
   } catch {
-    return value.split(':')[0] ?? null;
+    try {
+      return new URL(`http://${value}`).hostname;
+    } catch {
+      return value;
+    }
   }
 }
 
