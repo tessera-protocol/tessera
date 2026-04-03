@@ -17,6 +17,10 @@ import {
   DuplicateCommitmentError,
   IssuerServiceState,
 } from './state.js';
+import {
+  getIssuerCorsOrigins,
+  getLocalOnlyWriteRequestRejection,
+} from './local-only.js';
 
 interface CreateIssuerAppOptions {
   dataDir: string;
@@ -49,6 +53,7 @@ interface RevokeDelegationRequestBody {
 export function createIssuerApp(options: CreateIssuerAppOptions) {
   const app = new Hono();
   const state = new IssuerServiceState({ dataDir: options.dataDir });
+  const allowedOrigins = new Set(getIssuerCorsOrigins());
 
   state.log('Issuer service started', {
     publicKeyPem: state.getIssuerPublicKey(),
@@ -56,7 +61,19 @@ export function createIssuerApp(options: CreateIssuerAppOptions) {
     dataDir: state.dataDir,
   });
 
-  app.use('*', cors());
+  app.use(
+    '*',
+    cors({
+      origin: (origin) => {
+        if (!origin || origin.trim().length === 0) {
+          return null;
+        }
+
+        return allowedOrigins.has(origin) ? origin : null;
+      },
+      allowMethods: ['GET', 'POST', 'OPTIONS'],
+    }),
+  );
 
   app.get('/health', (c) => {
     return c.json({
@@ -75,6 +92,16 @@ export function createIssuerApp(options: CreateIssuerAppOptions) {
   });
 
   app.post('/credential/issue', async (c) => {
+    const rejection = getLocalOnlyWriteRequestRejection(c.req.raw);
+    if (rejection) {
+      state.log('Rejected non-local credential issuance attempt', {
+        host: c.req.header('host') ?? null,
+        origin: c.req.header('origin') ?? null,
+        forwardedFor: c.req.header('x-forwarded-for') ?? null,
+      });
+      return c.json({ error: rejection }, 403);
+    }
+
     const body = await c.req.json<IssueCredentialRequestBody>();
 
     const validationError = validateIssueCredentialBody(body);
@@ -209,6 +236,16 @@ export function createIssuerApp(options: CreateIssuerAppOptions) {
   });
 
   app.post('/delegation/revoke', async (c) => {
+    const rejection = getLocalOnlyWriteRequestRejection(c.req.raw);
+    if (rejection) {
+      state.log('Rejected non-local delegation revocation attempt', {
+        host: c.req.header('host') ?? null,
+        origin: c.req.header('origin') ?? null,
+        forwardedFor: c.req.header('x-forwarded-for') ?? null,
+      });
+      return c.json({ revoked: false, error: rejection }, 403);
+    }
+
     const body = await c.req.json<RevokeDelegationRequestBody>();
 
     if (!body.delegationId || typeof body.delegationId !== 'string') {

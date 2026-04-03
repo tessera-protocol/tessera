@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, test } from "node:test";
-import { NextRequest } from "next/server";
+import { NextRequest } from "next/server.js";
 
 const cleanupPaths: string[] = [];
 const envKeys = [
