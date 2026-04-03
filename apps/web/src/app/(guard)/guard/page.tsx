@@ -2,6 +2,8 @@
 
 import { TesseraMark } from "@/components/tessera-mark";
 import {
+  type GuardActionRecord,
+  type GuardAuditRecord,
   type GuardScanRecord,
   useGuardDashboard,
 } from "@/lib/guard-dashboard-context";
@@ -173,6 +175,60 @@ function getPluginSignal(pluginStatus: GuardScanRecord["pluginStatus"]) {
   }
 }
 
+function getDecisionTone(decision: GuardActionRecord["decision"]) {
+  return decision === "allowed"
+    ? "bg-status-green/10 text-status-green"
+    : "bg-status-red/10 text-status-red";
+}
+
+function getAuditSignal(audit: GuardAuditRecord) {
+  switch (audit.integrity) {
+    case "verified":
+      return {
+        label: "Verified chain",
+        tone: "bg-status-green/10 text-status-green",
+        detail: `Hash chain verified through seq ${audit.lastSeq}.`,
+      };
+    case "legacy":
+      return {
+        label: "Legacy log",
+        tone: "bg-status-warm/10 text-status-warm",
+        detail: "Decision events exist, but they predate hash-chained audit records.",
+      };
+    case "broken":
+      return {
+        label: "Integrity failed",
+        tone: "bg-status-red/10 text-status-red",
+        detail: audit.reason ?? "Decision log integrity could not be verified.",
+      };
+    case "empty":
+      return {
+        label: "No evidence yet",
+        tone: "bg-content-dim/10 text-content-muted",
+        detail: "No guarded actions have been recorded for this local control plane.",
+      };
+  }
+}
+
+function getReasonLabel(reasonCode: string | null) {
+  switch (reasonCode) {
+    case "NO_CREDENTIAL":
+      return "No credential";
+    case "OUT_OF_SCOPE":
+      return "Out of scope";
+    case "REVOKED":
+      return "Revoked";
+    case "EXPIRED":
+      return "Expired";
+    case "AGENT_MISMATCH":
+      return "Agent mismatch";
+    case "GUARD_EVALUATION_FAILED":
+      return "Guard evaluation failed";
+    default:
+      return "Decision reason";
+  }
+}
+
 export default function GuardDashboardPage() {
   const {
     scan,
@@ -199,9 +255,12 @@ export default function GuardDashboardPage() {
   const scanCopy = getScanCopy(scan);
   const runtimeSignal = getRuntimeSignal(scan);
   const pluginSignal = getPluginSignal(scan.pluginStatus);
+  const auditSignal = getAuditSignal(audit);
   const isAttached = scan.connectionStatus === "attached";
   const scanButtonLabel =
     scan.connectionStatus === "no_openclaw_found" ? "Scan for local agents" : "Scan again";
+  const allowedCount = actions.filter((entry) => entry.decision === "allowed").length;
+  const blockedCount = actions.filter((entry) => entry.decision === "blocked").length;
 
   const warnings = [
     scan.connectionStatus === "runtime_not_reachable"
@@ -429,40 +488,25 @@ export default function GuardDashboardPage() {
         <div className="rounded-[18px] border border-line bg-surface-raised p-5">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-[11px] uppercase tracking-widest text-content-dim">
-              Last decision
+              Audit evidence
             </p>
-            {latest ? (
-              <span
-                className={`rounded-full px-3 py-1 font-mono text-[11px] font-semibold ${
-                  latest.decision === "allowed"
-                    ? "bg-status-green/10 text-status-green"
-                    : "bg-status-red/10 text-status-red"
-                }`}
-              >
-                {latest.decision}
-              </span>
-            ) : (
-              <span className="rounded-full bg-content-dim/10 px-3 py-1 font-mono text-[11px] font-semibold text-content-muted">
-                none
-              </span>
-            )}
+            <span
+              className={`rounded-full px-3 py-1 font-mono text-[11px] font-semibold ${auditSignal.tone}`}
+            >
+              {auditSignal.label}
+            </span>
           </div>
-          {latest ? (
-            <>
-              <p className="font-mono text-sm text-content-primary">{latest.action}</p>
-              <p className="mt-1 text-xs text-content-muted">{latest.reason}</p>
-              <p className="mt-2 font-mono text-[11px] text-content-dim">
-                evidence {latest.evidenceId}
-              </p>
-              <p className="mt-2 font-mono text-[11px] text-content-dim">
-                {formatRelative(latest.timestamp)}
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-content-muted">
-              No Guard decision recorded yet for this local control plane.
+          <p className="text-sm text-content-primary">{auditSignal.detail}</p>
+          <p className="mt-1 text-xs text-content-muted">
+            {audit.totalEvents > 0
+              ? `${audit.totalEvents} recorded events · ${audit.verifiedEvents} verified · ${audit.invalidEvents} invalid`
+              : "No Guard events recorded yet for this local control plane."}
+          </p>
+          {audit.lastHash ? (
+            <p className="mt-2 font-mono text-[11px] text-content-dim">
+              last hash {audit.lastHash.slice(0, 12)}
             </p>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -702,7 +746,9 @@ export default function GuardDashboardPage() {
                     the attached runtime into durable exec mode for the selected agent, so
                     `exec.shell` runs without `/approve` prompts until the credential is
                     revoked or cleared. Trigger a real `exec` action in OpenClaw and this
-                    page will pick up the next allow/block decision from the plugin log.
+                    page will pick up the next allow/block decision from the plugin log. A
+                    real outbound `message.send` decision is only live-proven once the local
+                    channel account is configured and reachable.
                   </p>
                 </div>
 
@@ -718,24 +764,44 @@ export default function GuardDashboardPage() {
                           {latest.action}
                         </span>
                         <span
-                          className={`rounded-full px-3 py-1 font-mono text-[11px] font-semibold ${
-                            latest.decision === "allowed"
-                              ? "bg-status-green/10 text-status-green"
-                              : "bg-status-red/10 text-status-red"
-                          }`}
+                          className={`rounded-full px-3 py-1 font-mono text-[11px] font-semibold ${getDecisionTone(latest.decision)}`}
                         >
                           {latest.decision}
                         </span>
                       </div>
                       <p className="mb-2 text-sm text-content-primary">{latest.reason}</p>
-                      <p className="font-mono text-[11px] text-content-dim">
-                        {formatRelative(latest.timestamp)}
-                      </p>
+                      <div className="mb-3 flex flex-wrap gap-2">
+                        <span className="rounded-full border border-line bg-surface-raised px-3 py-1 font-mono text-[11px] text-content-muted">
+                          {getReasonLabel(latest.reasonCode)}
+                        </span>
+                        <span className="rounded-full border border-line bg-surface-raised px-3 py-1 font-mono text-[11px] text-content-muted">
+                          hook {latest.hook ?? "unknown"}
+                        </span>
+                        <span className="rounded-full border border-line bg-surface-raised px-3 py-1 font-mono text-[11px] text-content-muted">
+                          tool {latest.toolName ?? latest.action}
+                        </span>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <p className="font-mono text-[11px] text-content-dim">
+                          agent {latest.agentId}
+                        </p>
+                        <p className="font-mono text-[11px] text-content-dim">
+                          evidence {latest.evidenceId}
+                        </p>
+                        <p className="font-mono text-[11px] text-content-dim">
+                          credential {latest.credentialId ?? "none"}
+                        </p>
+                        <p className="font-mono text-[11px] text-content-dim">
+                          {formatRelative(latest.timestamp)}
+                        </p>
+                      </div>
                     </div>
                   ) : (
                     <div className="rounded-[14px] border border-dashed border-line bg-surface-card p-5 text-sm text-content-muted">
                       No Guard decisions yet. Run a real guarded action locally and this panel
                       will update from the plugin log.
+                      No Guard decisions yet. Run a real OpenClaw `exec` or `message.send`
+                      action locally and this panel will update from the plugin log.
                     </div>
                   )}
                 </div>
@@ -757,11 +823,44 @@ export default function GuardDashboardPage() {
                   </span>
                 </div>
 
+                <div className="mb-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-[14px] border border-line bg-surface-card p-4">
+                    <p className="text-[10px] uppercase tracking-widest text-content-dim">
+                      Integrity
+                    </p>
+                    <p className="mt-1 text-sm text-content-primary">{auditSignal.label}</p>
+                    <p className="mt-1 text-xs text-content-muted">{auditSignal.detail}</p>
+                  </div>
+                  <div className="rounded-[14px] border border-line bg-surface-card p-4">
+                    <p className="text-[10px] uppercase tracking-widest text-content-dim">
+                      Decision mix
+                    </p>
+                    <p className="mt-1 text-sm text-content-primary">
+                      {allowedCount} allowed · {blockedCount} blocked
+                    </p>
+                    <p className="mt-1 text-xs text-content-muted">
+                      Most recent 12 guard decisions from the local plugin log.
+                    </p>
+                  </div>
+                  <div className="rounded-[14px] border border-line bg-surface-card p-4">
+                    <p className="text-[10px] uppercase tracking-widest text-content-dim">
+                      Evidence chain
+                    </p>
+                    <p className="mt-1 text-sm text-content-primary">
+                      {audit.lastHash ? `seq ${audit.lastSeq}` : "not started"}
+                    </p>
+                    <p className="mt-1 font-mono text-[11px] text-content-dim">
+                      {audit.lastHash ? audit.lastHash.slice(0, 12) : "no hash"}
+                    </p>
+                  </div>
+                </div>
+
                 <div className="overflow-hidden rounded-[14px] border border-line bg-surface-card">
                   {actions.length === 0 ? (
                     <div className="px-5 py-4 text-sm text-content-muted">
-                      No Guard decisions recorded yet. Run a real guarded action locally and this
-                      panel will update from `probe-events.jsonl`.
+                      No Guard decisions recorded yet. Run a real OpenClaw `exec` or
+                      `message.send` action locally and this panel will update from
+                      `probe-events.jsonl`.
                     </div>
                   ) : null}
 
@@ -783,9 +882,23 @@ export default function GuardDashboardPage() {
                             {entry.action} · {entry.decision}
                           </p>
                           <p className="text-xs text-content-muted">{entry.reason}</p>
-                          <p className="text-[11px] font-mono text-content-dim">
-                            evidence {entry.evidenceId}
-                          </p>
+                          <div className="mt-1 flex flex-wrap gap-2">
+                            <span className="rounded-full border border-line bg-surface-raised px-2.5 py-1 font-mono text-[11px] text-content-dim">
+                              {getReasonLabel(entry.reasonCode)}
+                            </span>
+                            <span className="rounded-full border border-line bg-surface-raised px-2.5 py-1 font-mono text-[11px] text-content-dim">
+                              hook {entry.hook ?? "unknown"}
+                            </span>
+                            <span className="rounded-full border border-line bg-surface-raised px-2.5 py-1 font-mono text-[11px] text-content-dim">
+                              tool {entry.toolName ?? entry.action}
+                            </span>
+                            <span className="rounded-full border border-line bg-surface-raised px-2.5 py-1 font-mono text-[11px] text-content-dim">
+                              credential {entry.credentialId ?? "none"}
+                            </span>
+                            <span className="rounded-full border border-line bg-surface-raised px-2.5 py-1 font-mono text-[11px] text-content-dim">
+                              evidence {entry.evidenceId}
+                            </span>
+                          </div>
                         </div>
                       </div>
                       <span className="ml-4 shrink-0 font-mono text-[11px] text-content-dim">

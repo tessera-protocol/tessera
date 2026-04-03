@@ -88,10 +88,14 @@ export type GuardActionRecord = {
   action: string;
   decision: "allowed" | "blocked";
   reason: string;
+  reasonCode: string | null;
   timestamp: number;
   runtime: string;
   agentId: string;
   evidenceId: string;
+  hook: string | null;
+  toolName: string | null;
+  credentialId: string | null;
 };
 
 type GuardDashboardState = {

@@ -84,10 +84,14 @@ export type GuardActionRecord = {
   action: string;
   decision: "allowed" | "blocked";
   reason: string;
+  reasonCode: string | null;
   timestamp: number;
   runtime: string;
   agentId: string;
   evidenceId: string;
+  hook: string | null;
+  toolName: string | null;
+  credentialId: string | null;
 };
 
 export type GuardControlPlaneState = {
@@ -1140,11 +1144,16 @@ function readRecentGuardActions(runtimeKind: GuardRuntimeKind | null) {
         action: String(parsed.action ?? "unknown"),
         decision: Boolean(parsed.allowed) ? "allowed" : "blocked",
         reason: String(parsed.message ?? parsed.reason ?? "No reason provided."),
+        reasonCode: typeof parsed.reason === "string" ? parsed.reason : null,
         timestamp,
         runtime: "OpenClaw",
         agentId: String(parsed.agentId ?? "unknown"),
         evidenceId:
           typeof parsed.hash === "string" ? parsed.hash.slice(0, 12) : "legacy-unverified",
+        hook: typeof parsed.hook === "string" ? parsed.hook : null,
+        toolName: typeof parsed.toolName === "string" ? parsed.toolName : null,
+        credentialId:
+          typeof parsed.credentialId === "string" ? parsed.credentialId : null,
       });
     } catch {
       continue;
