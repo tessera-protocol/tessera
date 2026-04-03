@@ -313,10 +313,12 @@ test("scan requires explicit agent selection when multiple agents are discovered
       allow: ["tessera-guard-local"],
     },
     agents: {
-      entries: {
-        main: {},
-        ops: {},
+      defaults: {
+        model: {
+          primary: "openai-codex/gpt-5.4",
+        },
       },
+      list: [{ id: "main" }, { id: "ops" }],
     },
   });
 

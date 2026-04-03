@@ -695,16 +695,20 @@ function readRuntimeProbeOverride(runtimeKind: GuardRuntimeKind): GuardRuntimePr
 function discoverAgents(config: Record<string, unknown>) {
   const discovered = new Set<string>([DEFAULT_GUARD_AGENT_ID]);
   const agentsNode = (config.agents as Record<string, unknown> | undefined) ?? {};
-  const entriesNode = (agentsNode.entries as Record<string, unknown> | undefined) ?? {};
+  const listNode = Array.isArray(agentsNode.list) ? agentsNode.list : [];
 
-  for (const id of Object.keys(entriesNode)) {
-    if (id.trim().length > 0) {
+  for (const entry of listNode) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const id = (entry as { id?: unknown }).id;
+    if (typeof id === "string" && id.trim().length > 0) {
       discovered.add(id.trim());
     }
   }
 
   for (const id of Object.keys(agentsNode)) {
-    if (id === "defaults" || id === "entries") {
+    if (id === "defaults" || id === "list" || id === "entries") {
       continue;
     }
     if (id.trim().length > 0) {
