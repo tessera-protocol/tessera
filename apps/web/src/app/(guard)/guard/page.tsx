@@ -52,74 +52,100 @@ function formatDate(value: number) {
 
 function getScanCopy(scan: GuardScanRecord) {
   switch (scan.connectionStatus) {
-    case "disconnected":
+    case "no_openclaw_found":
       return {
-        title: "No local OpenClaw runtime attached",
-        detail:
-          "This dashboard only scans the repo-scoped OpenClaw demo runtime under .openclaw-probe-home.",
+        title: "No local OpenClaw installation detected",
+        detail: scan.reason ?? "Install and run OpenClaw locally, then scan again.",
       };
     case "scanning":
       return {
-        title: "Scanning repo-scoped OpenClaw runtime",
-        detail:
-          scan.reason ??
-          "Checking local config, runtime reachability, and Guard plugin state for agent main.",
+        title: "Looking for local OpenClaw runtime...",
+        detail: scan.reason ?? "Checking local config, runtime reachability, plugin state, and agents.",
       };
-    case "local_config_found":
+    case "openclaw_config_found":
       return {
-        title: "Repo-scoped OpenClaw config found",
-        detail:
-          scan.reason ??
-          "The local runtime config exists, but the runtime is not currently reachable.",
+        title: "OpenClaw configuration found",
+        detail: scan.reason ?? "OpenClaw config is present.",
+      };
+    case "runtime_not_reachable":
+      return {
+        title: "OpenClaw detected, runtime not reachable",
+        detail: scan.reason ?? "OpenClaw config is present, but the local runtime endpoint is down.",
       };
     case "runtime_reachable":
       return {
-        title: `Attached to local OpenClaw agent ${scan.attachedAgentId ?? "main"}`,
+        title: "OpenClaw runtime reachable",
+        detail: scan.reason ?? "Runtime endpoint is reachable.",
+      };
+    case "multiple_agents_found":
+      return {
+        title: "Multiple local agents found",
+        detail: scan.reason ?? "Choose which agent Tessera should wrap before issuing credentials.",
+      };
+    case "attached":
+      return {
+        title: `Connected to local OpenClaw agent ${scan.attachedAgentId ?? "main"}`,
         detail:
           scan.reason ??
-          "The repo-scoped OpenClaw runtime is reachable and the dashboard is attached.",
+          `Attached to ${scan.runtimeLabel ?? "local"} and ready for explicit delegation.`,
       };
     case "error":
       return {
         title: "Could not inspect the local OpenClaw runtime",
-        detail:
-          scan.reason ??
-          "An unexpected error occurred while scanning the repo-scoped runtime.",
+        detail: scan.reason ?? "An unexpected error occurred while scanning local OpenClaw runtime.",
       };
   }
 }
 
 function getRuntimeSignal(scan: GuardScanRecord) {
   switch (scan.connectionStatus) {
-    case "disconnected":
+    case "no_openclaw_found":
       return {
-        label: "Disconnected",
+        label: "Not found",
         tone: "bg-content-dim/10 text-content-muted",
-        detail: "No repo-scoped OpenClaw runtime is attached yet.",
+        detail: "No local OpenClaw installation detected yet.",
       };
     case "scanning":
       return {
         label: "Scanning",
         tone: "bg-status-warm/10 text-status-warm",
-        detail: "Checking repo-scoped config and local runtime reachability.",
+        detail: "Looking for local OpenClaw config, runtime endpoint, and agents.",
       };
-    case "local_config_found":
+    case "openclaw_config_found":
       return {
         label: "Config found",
         tone: "bg-status-warm/10 text-status-warm",
-        detail: "Local config exists, but the runtime is not reachable.",
+        detail: "Local OpenClaw config found.",
+      };
+    case "runtime_not_reachable":
+      return {
+        label: "Runtime down",
+        tone: "bg-status-red/10 text-status-red",
+        detail: "OpenClaw detected, runtime not reachable.",
       };
     case "runtime_reachable":
       return {
         label: "Runtime reachable",
         tone: "bg-status-green/10 text-status-green",
-        detail: `Repo-scoped runtime reached${scan.attachedAgentId ? `, attached to ${scan.attachedAgentId}` : ""}.`,
+        detail: `Runtime reachable (${scan.runtimeLabel ?? "local"}).`,
+      };
+    case "multiple_agents_found":
+      return {
+        label: "Agent selection",
+        tone: "bg-status-warm/10 text-status-warm",
+        detail: "Multiple agents found; choose one to attach.",
+      };
+    case "attached":
+      return {
+        label: "Attached",
+        tone: "bg-status-green/10 text-status-green",
+        detail: `${scan.runtimeLabel ?? "Local runtime"} attached to ${scan.attachedAgentId ?? "main"}.`,
       };
     case "error":
       return {
         label: "Error",
         tone: "bg-status-red/10 text-status-red",
-        detail: "The repo-scoped runtime could not be inspected cleanly.",
+        detail: "The local runtime could not be inspected cleanly.",
       };
   }
 }
@@ -130,7 +156,7 @@ function getPluginSignal(pluginStatus: GuardScanRecord["pluginStatus"]) {
       return {
         label: "Plugin loaded",
         tone: "bg-status-green/10 text-status-green",
-        detail: "tessera-guard-local is configured in the repo-scoped runtime.",
+        detail: "tessera-guard-local is configured in the selected runtime.",
       };
     case "plugin_missing":
       return {
@@ -142,7 +168,7 @@ function getPluginSignal(pluginStatus: GuardScanRecord["pluginStatus"]) {
       return {
         label: "Plugin unknown",
         tone: "bg-content-dim/10 text-content-muted",
-        detail: "Plugin state is unknown until the repo-scoped runtime is scanned.",
+        detail: "Plugin state is unknown until local runtime discovery completes.",
       };
   }
 }
@@ -158,6 +184,10 @@ export default function GuardDashboardPage() {
     credentialStoreError,
     actions,
     scanForLocalAgents,
+    selectedRuntimeKind,
+    selectedAgentId,
+    selectRuntimeKind,
+    selectAgentId,
     grantDemoCredential,
     revokeDemoCredential,
     clearDemoCredential,
@@ -169,17 +199,16 @@ export default function GuardDashboardPage() {
   const scanCopy = getScanCopy(scan);
   const runtimeSignal = getRuntimeSignal(scan);
   const pluginSignal = getPluginSignal(scan.pluginStatus);
-  const isAttached = scan.connectionStatus === "runtime_reachable";
+  const isAttached = scan.connectionStatus === "attached";
   const scanButtonLabel =
-    scan.connectionStatus === "disconnected" ? "Scan for local agents" : "Scan again";
+    scan.connectionStatus === "no_openclaw_found" ? "Scan for local agents" : "Scan again";
 
   const warnings = [
-    scan.connectionStatus === "local_config_found"
+    scan.connectionStatus === "runtime_not_reachable"
       ? {
           id: "runtime-unreachable",
           title: "Runtime not reachable",
-          message:
-            "Repo-scoped OpenClaw config is present, but the local gateway/runtime is not currently reachable.",
+          message: "OpenClaw was detected, but the local runtime endpoint is not currently reachable.",
         }
       : null,
     scan.connectionStatus === "error"
@@ -188,7 +217,7 @@ export default function GuardDashboardPage() {
           title: "Runtime inspection error",
           message:
             scan.reason ??
-            "The repo-scoped OpenClaw runtime could not be inspected cleanly.",
+            "The selected local OpenClaw runtime could not be inspected cleanly.",
         }
       : null,
     scan.pluginStatus === "plugin_missing"
@@ -196,7 +225,7 @@ export default function GuardDashboardPage() {
           id: "plugin-missing",
           title: "Guard plugin missing",
           message:
-            "The repo-scoped runtime is reachable, but tessera-guard-local is not configured or not loaded.",
+            "Runtime is reachable, but tessera-guard-local is not configured or not loaded.",
         }
       : null,
     credentialStoreError
@@ -220,6 +249,22 @@ export default function GuardDashboardPage() {
           message:
             audit.reason ??
             "Guard decision events are present, but the hash chain is not contiguous or includes invalid records.",
+        }
+      : null,
+    scan.runtimeSelectionRequired
+      ? {
+          id: "runtime-selection",
+          title: "Multiple local runtimes found",
+          message:
+            "More than one local OpenClaw runtime is reachable. Choose an explicit runtime target before attaching.",
+        }
+      : null,
+    scan.agentSelectionRequired
+      ? {
+          id: "agent-selection",
+          title: "Multiple local agents found",
+          message:
+            "Choose the local agent Tessera should wrap. Delegation remains explicit; no credential is issued automatically.",
         }
       : null,
   ].filter(Boolean) as Array<{ id: string; title: string; message: string }>;
@@ -249,7 +294,7 @@ export default function GuardDashboardPage() {
             local demo mode
           </span>
           <span className="rounded-full border border-line bg-surface-card px-3 py-1 font-mono text-[11px] font-semibold text-content-muted">
-            repo-scoped runtime
+            {scan.runtimeLabel ?? "runtime not selected"}
           </span>
           {loading ? (
             <span className="rounded-full bg-content-dim/10 px-3 py-1 font-mono text-[11px] font-semibold text-content-muted">
@@ -269,6 +314,54 @@ export default function GuardDashboardPage() {
               {scanCopy.title}
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-content-muted">{scanCopy.detail}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-widest text-content-dim">
+                  Runtime target
+                </span>
+                <select
+                  value={selectedRuntimeKind ?? ""}
+                  onChange={(event) =>
+                    void selectRuntimeKind(
+                      event.target.value === "repo_scoped" || event.target.value === "standard_local"
+                        ? event.target.value
+                        : null,
+                    )
+                  }
+                  className="rounded-[10px] border border-line bg-surface-card px-3 py-2 text-sm text-content-primary"
+                >
+                  <option value="">Auto</option>
+                  {scan.availableRuntimeKinds.includes("standard_local") ? (
+                    <option value="standard_local">Standard local runtime</option>
+                  ) : null}
+                  {scan.availableRuntimeKinds.includes("repo_scoped") ? (
+                    <option value="repo_scoped">Repo-scoped demo runtime</option>
+                  ) : null}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-widest text-content-dim">
+                  Agent target
+                </span>
+                <select
+                  value={selectedAgentId ?? ""}
+                  onChange={(event) =>
+                    void selectAgentId(event.target.value.trim().length > 0 ? event.target.value : null)
+                  }
+                  disabled={scan.availableAgents.length === 0}
+                  className="rounded-[10px] border border-line bg-surface-card px-3 py-2 text-sm text-content-primary disabled:cursor-not-allowed disabled:text-content-dim"
+                >
+                  <option value="">
+                    {scan.availableAgents.length === 0 ? "No agents discovered" : "Auto"}
+                  </option>
+                  {scan.availableAgents.map((agentId) => (
+                    <option key={agentId} value={agentId}>
+                      {agentId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
           <button
             type="button"
@@ -376,8 +469,8 @@ export default function GuardDashboardPage() {
       <div className="mb-4 rounded-[18px] border border-status-warm/20 bg-status-warm/10 p-4">
         <p className="text-sm font-semibold text-status-warm">Demo-only local control path</p>
         <p className="mt-1 text-sm text-status-warm">
-          `/guard` can mutate repo-scoped credential and runtime policy files only for a local
-          demo on loopback. It is not a production auth surface.
+          `/guard` can mutate local credential and runtime policy files only for explicit local
+          demo control on loopback. It is not a production auth surface.
         </p>
       </div>
 
@@ -404,15 +497,17 @@ export default function GuardDashboardPage() {
             <div className="space-y-2">
               <div className="rounded-[12px] border border-brand-purple/20 bg-brand-purple/10 px-3 py-2">
                 <p className="text-sm font-medium text-content-primary">Runtime</p>
-                <p className="text-[11px] text-content-muted">Repo-scoped OpenClaw scan only</p>
+                <p className="text-[11px] text-content-muted">
+                  Auto discovery across standard local and repo-scoped demo runtimes
+                </p>
               </div>
               <div className="rounded-[12px] border border-line bg-surface-card px-3 py-2">
                 <p className="text-sm font-medium text-content-primary">Attach</p>
-                <p className="text-[11px] text-content-muted">Agent main only</p>
+                <p className="text-[11px] text-content-muted">Explicit runtime and agent selection</p>
               </div>
               <div className="rounded-[12px] border border-line bg-surface-card px-3 py-2">
                 <p className="text-sm font-medium text-content-primary">Scope</p>
-                <p className="text-[11px] text-content-muted">No machine-wide discovery</p>
+                <p className="text-[11px] text-content-muted">Narrow local discovery only</p>
               </div>
             </div>
           </aside>
@@ -424,10 +519,10 @@ export default function GuardDashboardPage() {
             <div className="rounded-[14px] border border-dashed border-line bg-surface-card p-5 text-sm leading-relaxed text-content-muted">
               `/guard` starts disconnected. Use{" "}
               <span className="font-mono text-content-primary">Scan for local agents</span>{" "}
-              to inspect only the repo-scoped OpenClaw runtime used by the demo. Once the
-              runtime is reachable, the dashboard attaches to{" "}
-              <span className="font-mono text-content-primary">main</span> and the current
-              durable exec flow works unchanged.
+              to discover local OpenClaw config, runtime reachability, plugin state, and agents.
+              If exactly one obvious runtime and agent are found, Tessera auto-attaches. If
+              runtime or agent selection is ambiguous, choose explicitly, then grant or revoke
+              authority from this page.
             </div>
           </div>
         </div>
@@ -603,8 +698,8 @@ export default function GuardDashboardPage() {
 
                   <p className="rounded-[14px] border border-line bg-surface-card p-4 text-sm leading-relaxed text-content-muted">
                     These controls read and write the real local credential file used by the
-                    OpenClaw Guard plugin. Granting a demo credential also switches the
-                    repo-local OpenClaw runtime into durable exec mode for agent main, so
+                    OpenClaw Guard plugin. Granting an exec-scoped demo credential also switches
+                    the attached runtime into durable exec mode for the selected agent, so
                     `exec.shell` runs without `/approve` prompts until the credential is
                     revoked or cleared. Trigger a real `exec` action in OpenClaw and this
                     page will pick up the next allow/block decision from the plugin log.
@@ -639,8 +734,8 @@ export default function GuardDashboardPage() {
                     </div>
                   ) : (
                     <div className="rounded-[14px] border border-dashed border-line bg-surface-card p-5 text-sm text-content-muted">
-                      No Guard decisions yet. Run a real OpenClaw `exec` action locally and
-                      this panel will update from the plugin log.
+                      No Guard decisions yet. Run a real guarded action locally and this panel
+                      will update from the plugin log.
                     </div>
                   )}
                 </div>
@@ -665,8 +760,8 @@ export default function GuardDashboardPage() {
                 <div className="overflow-hidden rounded-[14px] border border-line bg-surface-card">
                   {actions.length === 0 ? (
                     <div className="px-5 py-4 text-sm text-content-muted">
-                      No Guard decisions recorded yet. Run a real OpenClaw `exec` action locally
-                      and this panel will update from `probe-events.jsonl`.
+                      No Guard decisions recorded yet. Run a real guarded action locally and this
+                      panel will update from `probe-events.jsonl`.
                     </div>
                   ) : null}
 

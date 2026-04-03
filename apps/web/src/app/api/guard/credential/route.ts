@@ -3,6 +3,7 @@ import {
   clearDemoCredential,
   grantDemoCredential,
   revokeDemoCredential,
+  type GuardRuntimeKind,
 } from "@/lib/guard-control-plane";
 import { getLocalDemoRequestRejection } from "@/lib/local-demo-request";
 
@@ -33,17 +34,22 @@ export async function POST(request: NextRequest) {
     action?: "grant" | "revoke" | "clear";
     agentId?: string;
     actions?: string[];
+    runtimeKind?: GuardRuntimeKind;
   };
 
   const agentId = body.agentId || "main";
+  const runtimeKind =
+    body.runtimeKind === "repo_scoped" || body.runtimeKind === "standard_local"
+      ? body.runtimeKind
+      : "repo_scoped";
 
   switch (body.action) {
     case "grant":
-      return NextResponse.json(await grantDemoCredential(agentId, body.actions));
+      return NextResponse.json(await grantDemoCredential(agentId, body.actions, runtimeKind));
     case "revoke":
-      return NextResponse.json(await revokeDemoCredential(agentId));
+      return NextResponse.json(await revokeDemoCredential(agentId, runtimeKind));
     case "clear":
-      return NextResponse.json(await clearDemoCredential(agentId));
+      return NextResponse.json(await clearDemoCredential(agentId, runtimeKind));
     default:
       return NextResponse.json(
         { error: "Unknown credential action" },

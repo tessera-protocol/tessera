@@ -11,14 +11,18 @@ import {
 
 export type GuardCredentialStatus = "none" | "valid" | "revoked" | "expired";
 export type GuardConnectionStatus =
-  | "disconnected"
+  | "no_openclaw_found"
   | "scanning"
-  | "local_config_found"
+  | "openclaw_config_found"
+  | "runtime_not_reachable"
   | "runtime_reachable"
+  | "multiple_agents_found"
+  | "attached"
   | "error";
 export type GuardPluginStatus = "plugin_loaded" | "plugin_missing" | "unknown";
 export type GuardPluginTrustStatus = "trusted_only" | "untrusted_plugins_detected";
 export type GuardAuditIntegrityStatus = "empty" | "legacy" | "verified" | "broken";
+export type GuardRuntimeKind = "repo_scoped" | "standard_local";
 
 export type GuardRuntimeRecord = {
   agentId: string;
@@ -32,10 +36,19 @@ export type GuardRuntimeRecord = {
 
 export type GuardScanRecord = {
   connectionStatus: GuardConnectionStatus;
+  installationFound: boolean;
   configFound: boolean;
   runtimeReachable: boolean;
+  runtimeKind: GuardRuntimeKind | null;
+  runtimeLabel: string | null;
+  availableRuntimeKinds: GuardRuntimeKind[];
+  runtimeSelectionRequired: boolean;
   pluginStatus: GuardPluginStatus;
   pluginTrustStatus: GuardPluginTrustStatus;
+  availableAgents: string[];
+  defaultAttachableAgentId: string | null;
+  agentSelectionRequired: boolean;
+  autoAttached: boolean;
   attachedAgentId: string | null;
   reason: string | null;
 };
@@ -94,6 +107,10 @@ type GuardDashboardState = {
 
 type GuardDashboardContextValue = GuardDashboardState & {
   loading: boolean;
+  selectedRuntimeKind: GuardRuntimeKind | null;
+  selectedAgentId: string | null;
+  selectRuntimeKind: (runtimeKind: GuardRuntimeKind | null) => Promise<void>;
+  selectAgentId: (agentId: string | null) => Promise<void>;
   refresh: () => Promise<void>;
   scanForLocalAgents: () => Promise<void>;
   grantDemoCredential: () => Promise<void>;
@@ -103,11 +120,20 @@ type GuardDashboardContextValue = GuardDashboardState & {
 
 const defaultState: GuardDashboardState = {
   scan: {
-    connectionStatus: "disconnected",
+    connectionStatus: "no_openclaw_found",
+    installationFound: false,
     configFound: false,
     runtimeReachable: false,
+    runtimeKind: null,
+    runtimeLabel: null,
+    availableRuntimeKinds: [],
+    runtimeSelectionRequired: false,
     pluginStatus: "unknown",
     pluginTrustStatus: "trusted_only",
+    availableAgents: [],
+    defaultAttachableAgentId: null,
+    agentSelectionRequired: false,
+    autoAttached: false,
     attachedAgentId: null,
     reason: "No local OpenClaw runtime attached.",
   },
@@ -143,21 +169,43 @@ const defaultState: GuardDashboardState = {
 
 const GuardDashboardContext = createContext<GuardDashboardContextValue | null>(null);
 
-async function fetchState() {
-  const response = await fetch("/api/guard/state", {
+async function fetchStateWithSelection(selection: {
+  runtimeKind?: GuardRuntimeKind | null;
+  agentId?: string | null;
+}) {
+  const params = new URLSearchParams();
+  if (selection.runtimeKind) {
+    params.set("runtimeKind", selection.runtimeKind);
+  }
+  if (selection.agentId) {
+    params.set("agentId", selection.agentId);
+  }
+  const targetUrl =
+    params.size > 0 ? `/api/guard/state?${params.toString()}` : "/api/guard/state";
+  const scopedResponse = await fetch(targetUrl, {
     cache: "no-store",
   });
 
-  if (!response.ok) {
+  if (!scopedResponse.ok) {
     throw new Error("Failed to load guard state");
   }
 
-  return (await response.json()) as GuardDashboardState;
+  return (await scopedResponse.json()) as GuardDashboardState;
 }
 
-async function scanState() {
+async function scanState(selection: {
+  runtimeKind?: GuardRuntimeKind | null;
+  agentId?: string | null;
+}) {
   const response = await fetch("/api/guard/scan", {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      runtimeKind: selection.runtimeKind ?? undefined,
+      agentId: selection.agentId ?? undefined,
+    }),
     cache: "no-store",
   });
 
@@ -168,13 +216,23 @@ async function scanState() {
   return (await response.json()) as GuardDashboardState;
 }
 
-async function postCredentialAction(action: "grant" | "revoke" | "clear") {
+async function postCredentialAction(
+  action: "grant" | "revoke" | "clear",
+  selection: {
+    runtimeKind?: GuardRuntimeKind | null;
+    agentId?: string | null;
+  },
+) {
   const response = await fetch("/api/guard/credential", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ action }),
+    body: JSON.stringify({
+      action,
+      runtimeKind: selection.runtimeKind ?? undefined,
+      agentId: selection.agentId ?? undefined,
+    }),
   });
 
   if (!response.ok) {
@@ -187,22 +245,92 @@ async function postCredentialAction(action: "grant" | "revoke" | "clear") {
 export function GuardDashboardProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GuardDashboardState>(defaultState);
   const [loading, setLoading] = useState(false);
+  const [selectedRuntimeKind, setSelectedRuntimeKind] = useState<GuardRuntimeKind | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   const refresh = async () => {
-    const next = await fetchState();
+    const next = await fetchStateWithSelection({
+      runtimeKind: selectedRuntimeKind,
+      agentId: selectedAgentId,
+    });
     setState(next);
+    if (next.scan.runtimeKind !== null) {
+      setSelectedRuntimeKind(next.scan.runtimeKind);
+    }
+    if (next.scan.attachedAgentId !== null) {
+      setSelectedAgentId(next.scan.attachedAgentId);
+    } else if (next.scan.defaultAttachableAgentId) {
+      setSelectedAgentId(next.scan.defaultAttachableAgentId);
+    }
   };
 
   useEffect(() => {
     let cancelled = false;
-    if (state.scan.connectionStatus !== "runtime_reachable") {
+    setLoading(true);
+    setState((current) => ({
+      ...current,
+      scan: {
+        ...current.scan,
+        connectionStatus: "scanning",
+        reason: "Looking for local OpenClaw runtime...",
+      },
+    }));
+
+    void scanState({
+      runtimeKind: null,
+      agentId: null,
+    })
+      .then((next) => {
+        if (cancelled) {
+          return;
+        }
+        setState(next);
+        if (next.scan.runtimeKind !== null) {
+          setSelectedRuntimeKind(next.scan.runtimeKind);
+        }
+        if (next.scan.attachedAgentId !== null) {
+          setSelectedAgentId(next.scan.attachedAgentId);
+        } else if (next.scan.defaultAttachableAgentId) {
+          setSelectedAgentId(next.scan.defaultAttachableAgentId);
+        }
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setState((current) => ({
+          ...current,
+          scan: {
+            ...current.scan,
+            connectionStatus: "error",
+            reason: "Could not scan local OpenClaw runtime.",
+          },
+        }));
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (state.scan.connectionStatus !== "attached") {
       return () => {
         cancelled = true;
       };
     }
 
     const interval = window.setInterval(() => {
-      void fetchState()
+      void fetchStateWithSelection({
+        runtimeKind: selectedRuntimeKind,
+        agentId: selectedAgentId,
+      })
         .then((next) => {
           if (!cancelled) {
             setState(next);
@@ -215,7 +343,7 @@ export function GuardDashboardProvider({ children }: { children: ReactNode }) {
               scan: {
                 ...current.scan,
                 connectionStatus: "error",
-                reason: "Failed to refresh the repo-scoped OpenClaw runtime state.",
+                reason: "Failed to refresh local OpenClaw runtime state.",
               },
             }));
           }
@@ -226,12 +354,40 @@ export function GuardDashboardProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [state.scan.connectionStatus]);
+  }, [selectedAgentId, selectedRuntimeKind, state.scan.connectionStatus]);
 
   const value = useMemo<GuardDashboardContextValue>(
     () => ({
       ...state,
       loading,
+      selectedRuntimeKind,
+      selectedAgentId,
+      selectRuntimeKind: async (runtimeKind) => {
+        setLoading(true);
+        setSelectedRuntimeKind(runtimeKind);
+        try {
+          const next = await fetchStateWithSelection({
+            runtimeKind,
+            agentId: selectedAgentId,
+          });
+          setState(next);
+        } finally {
+          setLoading(false);
+        }
+      },
+      selectAgentId: async (agentId) => {
+        setLoading(true);
+        setSelectedAgentId(agentId);
+        try {
+          const next = await fetchStateWithSelection({
+            runtimeKind: selectedRuntimeKind,
+            agentId,
+          });
+          setState(next);
+        } finally {
+          setLoading(false);
+        }
+      },
       refresh: async () => {
         setLoading(true);
         try {
@@ -243,22 +399,34 @@ export function GuardDashboardProvider({ children }: { children: ReactNode }) {
       scanForLocalAgents: async () => {
         setLoading(true);
         setState((current) => ({
-          ...current,
-          scan: {
-            ...current.scan,
-            connectionStatus: "scanning",
-            reason: "Scanning repo-scoped OpenClaw runtime...",
-          },
-        }));
+            ...current,
+            scan: {
+              ...current.scan,
+              connectionStatus: "scanning",
+              reason: "Looking for local OpenClaw runtime...",
+            },
+          }));
         try {
-          setState(await scanState());
+          const next = await scanState({
+            runtimeKind: selectedRuntimeKind,
+            agentId: selectedAgentId,
+          });
+          setState(next);
+          if (next.scan.runtimeKind !== null) {
+            setSelectedRuntimeKind(next.scan.runtimeKind);
+          }
+          if (next.scan.attachedAgentId !== null) {
+            setSelectedAgentId(next.scan.attachedAgentId);
+          } else if (next.scan.defaultAttachableAgentId) {
+            setSelectedAgentId(next.scan.defaultAttachableAgentId);
+          }
         } catch {
           setState((current) => ({
             ...current,
             scan: {
               ...current.scan,
               connectionStatus: "error",
-              reason: "Could not scan the repo-scoped OpenClaw runtime.",
+              reason: "Could not scan local OpenClaw runtime.",
             },
           }));
         } finally {
@@ -268,7 +436,12 @@ export function GuardDashboardProvider({ children }: { children: ReactNode }) {
       grantDemoCredential: async () => {
         setLoading(true);
         try {
-          setState(await postCredentialAction("grant"));
+          setState(
+            await postCredentialAction("grant", {
+              runtimeKind: selectedRuntimeKind,
+              agentId: selectedAgentId,
+            }),
+          );
         } finally {
           setLoading(false);
         }
@@ -276,7 +449,12 @@ export function GuardDashboardProvider({ children }: { children: ReactNode }) {
       revokeDemoCredential: async () => {
         setLoading(true);
         try {
-          setState(await postCredentialAction("revoke"));
+          setState(
+            await postCredentialAction("revoke", {
+              runtimeKind: selectedRuntimeKind,
+              agentId: selectedAgentId,
+            }),
+          );
         } finally {
           setLoading(false);
         }
@@ -284,13 +462,18 @@ export function GuardDashboardProvider({ children }: { children: ReactNode }) {
       clearDemoCredential: async () => {
         setLoading(true);
         try {
-          setState(await postCredentialAction("clear"));
+          setState(
+            await postCredentialAction("clear", {
+              runtimeKind: selectedRuntimeKind,
+              agentId: selectedAgentId,
+            }),
+          );
         } finally {
           setLoading(false);
         }
       },
     }),
-    [loading, state],
+    [loading, selectedAgentId, selectedRuntimeKind, state],
   );
 
   return (

@@ -8,9 +8,10 @@ import {
 } from "../packages/openclaw/runtime/local-guard.js";
 
 const pluginDir = path.dirname(fileURLToPath(import.meta.url));
-const logPath = path.join(pluginDir, "probe-events.jsonl");
 const credentialsPath = path.join(pluginDir, "local-credentials.json");
 const debugPayloadLogging = process.env.TESSERA_GUARD_DEBUG_LOG_PAYLOADS === "1";
+const openclawHome = resolveOpenClawHome();
+const logPath = path.join(pluginDir, getProbeLogFileName(openclawHome));
 
 const ACTION_MAP = {
   "shell.exec": TESSERA_ACTIONS.EXEC_SHELL,
@@ -22,6 +23,24 @@ const ACTION_MAP = {
 };
 
 let eventChainState = null;
+
+function resolveOpenClawHome() {
+  const raw = process.env.OPENCLAW_HOME;
+  if (!raw || raw.trim().length === 0) {
+    return null;
+  }
+
+  return path.resolve(raw.trim(), ".openclaw");
+}
+
+function getProbeLogFileName(runtimeHome) {
+  if (!runtimeHome) {
+    return "probe-events.jsonl";
+  }
+
+  const suffix = crypto.createHash("sha256").update(runtimeHome, "utf8").digest("hex").slice(0, 12);
+  return `probe-events-${suffix}.jsonl`;
+}
 
 function initializeEventChainState() {
   if (eventChainState) {
@@ -66,6 +85,7 @@ function computeDecisionHash(input) {
     seq: input.seq,
     prevHash: input.prevHash,
     ts: input.ts,
+    openclawHome: input.openclawHome ?? null,
     hook: input.hook,
     action: input.action ?? null,
     allowed: input.allowed ?? null,
@@ -89,6 +109,7 @@ function writeEvent(record) {
       seq,
       prevHash,
       ts,
+      openclawHome,
       hook,
       ...record
     });
@@ -97,6 +118,7 @@ function writeEvent(record) {
       prevHash,
       hash,
       ts,
+      openclawHome,
       hook,
       ...record
     };
