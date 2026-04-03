@@ -275,6 +275,25 @@ test("legacy decision logs are surfaced as unverified audit history", async () =
 
 test("hashed decision logs surface tool and credential audit detail", async () => {
   const fixture = createFixture();
+  process.env.TESSERA_GUARD_RUNTIME_PROBE_OVERRIDE = "repo_scoped=reachable";
+  writeJson(fixture.configPath, {
+    gateway: {
+      bind: "loopback",
+      port: 19001,
+    },
+    plugins: {
+      allow: ["tessera-guard-local"],
+    },
+    agents: {
+      list: [{ id: "main" }],
+    },
+    tools: {
+      exec: {
+        security: "deny",
+        ask: "on-miss",
+      },
+    },
+  });
   const ts = new Date().toISOString();
   const prevHash = null;
   const seq = 1;
@@ -283,6 +302,7 @@ test("hashed decision logs surface tool and credential audit detail", async () =
     prevHash,
     hash: "placeholder",
     ts,
+    openclawHome: path.resolve(fixture.openclawHomeDir),
     hook: "guard_decision",
     action: "message.send",
     allowed: false,
@@ -296,6 +316,7 @@ test("hashed decision logs surface tool and credential audit detail", async () =
     seq,
     prevHash,
     ts,
+    openclawHome: payload.openclawHome,
     hook: payload.hook,
     action: payload.action,
     allowed: payload.allowed,
@@ -308,7 +329,7 @@ test("hashed decision logs surface tool and credential audit detail", async () =
   payload.hash = crypto.createHash("sha256").update(normalized, "utf8").digest("hex");
 
   writeFileSync(
-    path.join(path.dirname(fixture.credentialPath), "probe-events.jsonl"),
+    getProbeLogPath(fixture.pluginDir, fixture.openclawHomeDir),
     `${JSON.stringify(payload)}\n`,
     "utf8",
   );
