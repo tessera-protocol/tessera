@@ -231,6 +231,22 @@ test("scan reports untrusted plugin expansion when non-allowlisted plugins are e
 
 test("legacy decision logs are surfaced as unverified audit history", async () => {
   const fixture = createFixture();
+  process.env.TESSERA_GUARD_RUNTIME_PROBE_OVERRIDE = "repo_scoped=reachable";
+  writeJson(fixture.configPath, {
+    gateway: {
+      bind: "loopback",
+      port: 19001,
+    },
+    plugins: {
+      allow: ["tessera-guard-local"],
+    },
+    tools: {
+      exec: {
+        security: "deny",
+        ask: "on-miss",
+      },
+    },
+  });
   const logPath = getProbeLogPath(fixture.pluginDir, fixture.openclawHomeDir);
   writeJson(logPath, null);
   writeFileSync(
