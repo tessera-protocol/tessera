@@ -267,6 +267,80 @@ test("legacy decision logs are surfaced as unverified audit history", async () =
   assert.equal(state.audit.integrity, "legacy");
   assert.equal(state.actions.length, 1);
   assert.equal(state.actions[0]?.evidenceId, "legacy-unverified");
+  assert.equal(state.actions[0]?.hook, "guard_decision");
+  assert.equal(state.actions[0]?.toolName, null);
+  assert.equal(state.actions[0]?.credentialId, null);
+  assert.equal(state.actions[0]?.reasonCode, null);
+});
+
+test("hashed decision logs surface tool and credential audit detail", async () => {
+  const fixture = createFixture();
+  process.env.TESSERA_GUARD_RUNTIME_PROBE_OVERRIDE = "repo_scoped=reachable";
+  writeJson(fixture.configPath, {
+    gateway: {
+      bind: "loopback",
+      port: 19001,
+    },
+    plugins: {
+      allow: ["tessera-guard-local"],
+    },
+    agents: {
+      list: [{ id: "main" }],
+    },
+    tools: {
+      exec: {
+        security: "deny",
+        ask: "on-miss",
+      },
+    },
+  });
+  const ts = new Date().toISOString();
+  const prevHash = null;
+  const seq = 1;
+  const payload = {
+    seq,
+    prevHash,
+    hash: "placeholder",
+    ts,
+    openclawHome: path.resolve(fixture.openclawHomeDir),
+    hook: "guard_decision",
+    action: "message.send",
+    allowed: false,
+    reason: "OUT_OF_SCOPE",
+    message: "credential does not authorize message.send",
+    agentId: "main",
+    toolName: "message.send",
+    credentialId: "cred_live_123",
+  };
+  const normalized = JSON.stringify({
+    seq,
+    prevHash,
+    ts,
+    openclawHome: payload.openclawHome,
+    hook: payload.hook,
+    action: payload.action,
+    allowed: payload.allowed,
+    reason: payload.reason,
+    message: payload.message,
+    agentId: payload.agentId,
+    toolName: payload.toolName,
+    credentialId: payload.credentialId,
+  });
+  payload.hash = crypto.createHash("sha256").update(normalized, "utf8").digest("hex");
+
+  writeFileSync(
+    getProbeLogPath(fixture.pluginDir, fixture.openclawHomeDir),
+    `${JSON.stringify(payload)}\n`,
+    "utf8",
+  );
+
+  const state = await readGuardControlPlaneState();
+
+  assert.equal(state.audit.integrity, "verified");
+  assert.equal(state.actions[0]?.hook, "guard_decision");
+  assert.equal(state.actions[0]?.toolName, "message.send");
+  assert.equal(state.actions[0]?.credentialId, "cred_live_123");
+  assert.equal(state.actions[0]?.reasonCode, "OUT_OF_SCOPE");
 });
 
 test("detached discovery shows no history even if another runtime log exists", async () => {
