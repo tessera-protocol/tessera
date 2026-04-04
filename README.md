@@ -73,6 +73,12 @@ The practical direction is role-first onboarding:
 - preset capability profiles and safe defaults should cover common cases first
 - raw policy controls should remain available for advanced operators
 
+The first CLI prototype for that flow now lives in `packages/cli-demo`:
+
+- `npm --prefix packages/cli-demo run protect -- --role developer`
+- it renders a Safety Manifest before attaching scoped local authority
+- it keeps revocation explicit with `tessera revoke <credential-id>`
+
 Examples of likely role shapes include:
 
 - researcher / read-only
@@ -119,6 +125,7 @@ OpenClaw is the proving ground and the wedge, not the final universe.
 - [Quickstart](./QUICKSTART.md)
 - [Security Model](./SECURITY_MODEL.md)
 - [Whitepaper v0.6 draft](./docs/whitepaper.pdf)
+- [Message.send proof path note](./docs/message-send-proof-path.md)
 - [Landing page](./docs/index.html)
 - [SDK package](./packages/sdk/README.md)
 - [Protocol spec](./spec/v0.1/tessera-spec.md)

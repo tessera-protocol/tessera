@@ -3,12 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "CLI demo of Tessera credential issuance, delegation, proof generation, and verification",
+  "description": "Role-first CLI demo for Tessera capability issuance, attachment, and verification",
   "bin": {
-    "tessera-demo": "./src/demo.ts"
+    "tessera": "./src/cli.ts",
+    "tessera-demo": "./src/cli.ts"
   },
   "scripts": {
-    "demo": "tsx src/demo.ts"
+    "demo": "tsx src/cli.ts demo",
+    "protect": "tsx src/cli.ts protect",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@tessera-protocol/sdk": "file:../sdk"
