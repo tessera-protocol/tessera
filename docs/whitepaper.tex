@@ -16,7 +16,6 @@
 \usepackage{booktabs}
 \usepackage{enumitem}
 \usepackage{listings}
-\usepackage{amsmath}
 \usepackage{fancyhdr}
 \usepackage{titlesec}
 \usepackage{caption}
@@ -33,7 +32,7 @@
   linkcolor=accent,
   citecolor=accent,
   urlcolor=linkblue,
-  pdftitle={Tessera: The Permission Layer for AI Agents},
+  pdftitle={Tessera: Capability-Based Security for Agent Actions},
   pdfauthor={Guglielmo Reggio}
 }
 
@@ -62,7 +61,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 \renewcommand{\headrulewidth}{0pt}
-\fancyfoot[C]{\small\color{gray} Tessera --- Working Draft v0.6 --- April 2026 \hfill \thepage}
+\fancyfoot[C]{\small\color{gray} Tessera --- Working Draft v0.7 --- April 2026 \hfill \thepage}
 
 \setlist[itemize]{topsep=0.3em, itemsep=0.15em, parsep=0pt}
 \setlist[enumerate]{topsep=0.3em, itemsep=0.15em, parsep=0pt}
@@ -74,14 +73,14 @@
 
 \begin{center}
   {\Huge\bfseries TESSERA}\\[0.8em]
-  {\Large The permission layer for AI agents}\\[2.5em]
-  {\large Working Draft v0.6}\\[1.2em]
+  {\Large Identity and authority for AI agents}\\[2.5em]
+  {\large Working Draft v0.7}\\[1.2em]
   {\large Guglielmo Reggio}\\[0.6em]
   {\normalsize April 2026}\\[4em]
   \rule{8cm}{0.4pt}\\[1.5em]
   {\itshape\small
     The Roman \emph{tessera hospitalis} was a token split between two strangers.\\
-    Reuniting the pieces proved trust across distance.
+    Reuniting the pieces proved a relationship of trust.
   }
 \end{center}
 
@@ -91,452 +90,424 @@
 \newpage
 
 \begin{abstract}
-\noindent AI agents can now send messages, execute code, spend money, publish content, and operate tools across the web. But the internet still lacks a standard way to answer four questions at the moment an agent acts: who authorised this agent, what is it allowed to do, when does that authority expire, and can that authority be revoked immediately?
+\noindent AI agents can now execute shell commands, modify files, send messages, call APIs, and trigger real-world side effects. The main security problem is no longer model output quality alone. It is ambient authority: agents routinely inherit broad, implicit permissions that are hard to scope, hard to revoke, and difficult to audit.
 
-Tessera is an open protocol for execution-time authorisation of AI agents. It makes sensitive agent actions contingent on a valid, human-delegated credential. Before an agent can send an email, trigger a payment, execute a shell command, or publish content, it must present cryptographic proof that a real human authorised that class of action within a defined scope and time window.
+Tessera is a capability-based security layer for agent actions. At the product layer, Tessera provides identity and authority for AI agents. At the technical layer, it issues scoped capabilities, enforces them at runtime, revokes them quickly, and records decision traces for operators and platforms.
 
-Tessera's first product is Tessera Guard: a runtime middleware layer that sits between agent frameworks and sensitive tools, verifies agent credentials, and blocks unauthorised actions by default.
+Tessera starts with a narrow wedge: runtime-native enforcement inside real agent runtimes such as OpenClaw. The goal is not to solve every aspect of AI safety or semantic policy. The goal is to make sensitive agent actions require explicit, revocable, runtime-enforced authority.
 
-Under the hood, Tessera combines a human root credential, privacy-preserving presentation, scoped delegation from human to agent, revocation and policy verification at execution time, and an open SDK for agent runtimes, tool gateways, and platforms.
-
-Tessera is not a cryptocurrency, does not depend on biometric hardware, and does not require platforms to learn user identity. Its purpose is narrower and more practical: to become the standard authorisation layer for AI agents.
+The long-term opportunity is larger. If platforms, runtimes, and operators adopt common authority checks, agents can become easier to trust, easier to constrain, and easier to audit. But that future depends on practical adoption, not protocol elegance. Tessera therefore starts with the most concrete problem first: capability-based security for agent actions.
 \end{abstract}
+
+\section{Executive Summary}
+
+AI agents are moving from suggestion to execution. They can already send messages, edit code, access tools, and operate software on behalf of users and organisations. Most of these systems still rely on ambient authority: if an agent has access to a token, tool, or runtime, it can often act with far broader power than was intentionally delegated.
+
+Tessera addresses that problem by introducing scoped, revocable, runtime-enforced authority for agent actions.
+
+The core claim of this paper is simple:
+
+\begin{quote}
+agent actions should require explicit capabilities, and those capabilities should be scoped, revocable, enforced at runtime, and auditable.
+\end{quote}
+
+This makes Tessera closer to OAuth for agent actions than to a generic identity layer. The point is not merely to name an agent. The point is to control what that agent can do, when it can do it, and how that authority can be stopped.
+
+Today, Tessera's most credible wedge is runtime-native enforcement in real agent runtimes such as OpenClaw. That wedge is intentionally narrow, but it is real: scoped capabilities, runtime hooks, revocation, and audit evidence inside an actual execution path.
 
 \section{The Problem}
 
-\subsection{Agents now have real-world power}
+\subsection{Agents inherit too much authority}
 
-AI systems are no longer limited to generating text. They increasingly act through agents that can:
+Modern agent systems are increasingly able to:
 
 \begin{itemize}
-  \item send emails and messages,
-  \item modify code and infrastructure,
-  \item call APIs and external services,
-  \item make purchases and subscriptions,
-  \item post public content,
-  \item and coordinate with other agents.
+  \item execute shell commands,
+  \item edit code and files,
+  \item send outbound messages,
+  \item trigger third-party APIs,
+  \item spend money or consume quota,
+  \item and coordinate across tools and services.
 \end{itemize}
 
-This is a structural shift. Once an agent can act, the key question is no longer just whether it is intelligent. The key question is whether it is authorised.
+The default security model is often weak. If the runtime can access a tool, the agent can usually attempt to use it. If the operator has already authenticated a service, the agent may inherit those credentials. If there is a manual approval step, it is often either too coarse, too frequent, or too easy to bypass by moving the action elsewhere in the stack.
 
-\subsection{Identity is not enough}
+\subsection{Ambient authority is the real failure mode}
 
-Traditional identity systems answer questions about who a user is. They do not cleanly answer what an autonomous agent is allowed to do on that user's behalf at the moment of execution.
+The central failure mode is ambient authority. An agent does not prove explicit authority for each sensitive class of action. It simply acts with whatever authority the surrounding runtime, tool, token, or session already exposes.
 
-Existing systems rely on one of three flawed patterns:
+That creates predictable problems:
+
+\begin{itemize}
+  \item permissions are broader than intended,
+  \item delegation is implicit rather than explicit,
+  \item revocation is slow or nonexistent,
+  \item audit trails are incomplete,
+  \item and operators cannot clearly answer why an action was allowed or denied.
+\end{itemize}
+
+\subsection{Existing patterns are insufficient}
+
+Most current approaches fall into one of four categories:
 
 \begin{enumerate}
-  \item \textbf{Ambient authority} --- if the agent has access to a tool or token, it can act.
-  \item \textbf{Repeated approval prompts} --- the human is asked every time, destroying the utility of autonomy.
-  \item \textbf{Platform-specific permissions} --- each runtime reinvents authorisation in its own format.
+  \item \textbf{Direct tool access.} If the agent has the tool, it can try to use it.
+  \item \textbf{Approval spam.} The human is asked repeatedly, which undermines autonomy and encourages approval fatigue.
+  \item \textbf{Framework-specific permissions.} Each runtime invents its own policy surface, often with weak portability or poor revocation semantics.
+  \item \textbf{Proxy-only controls.} Enforcement happens outside the runtime hot path and can drift from what the agent is actually doing.
 \end{enumerate}
 
-None of these creates portable, auditable, revocable delegation.
-
-\subsection{The missing primitive}
-
-The internet needs a primitive for human-to-agent delegated authority.
-
-That primitive must allow a verifier to check, in real time:
+None of these gives a clean answer to the core operator questions:
 
 \begin{itemize}
-  \item that a human principal exists,
-  \item that the human delegated authority to this specific agent,
-  \item that the delegated scope covers the requested action,
-  \item that the authorisation is still valid,
-  \item and that it has not been revoked.
+  \item what was this agent allowed to do,
+  \item under whose authority,
+  \item with what limits,
+  \item and how do we stop it now?
 \end{itemize}
 
-That is the problem Tessera solves.
+\section{Thesis}
+
+The thesis of Tessera is that agent actions should require explicit capabilities.
+
+Those capabilities should be:
+
+\begin{itemize}
+  \item \textbf{scoped} to specific action classes and limits,
+  \item \textbf{runtime-enforced} at the point where the action actually executes,
+  \item \textbf{revocable} quickly enough to function as a real kill switch,
+  \item and \textbf{auditable} so operators can reconstruct what was requested, allowed, denied, granted, or revoked.
+\end{itemize}
+
+This is the deepest technical framing of Tessera:
+
+\begin{quote}
+Tessera is a capability-based security layer for agent actions.
+\end{quote}
+
+Identity still matters, but it is not the deepest layer. Identity tells a system which principal or agent is involved. Capabilities determine what that agent is allowed to do.
 
 \section{What Tessera Is}
 
-Tessera is an open authorisation protocol for agentic systems.
+Tessera operates at three levels of framing.
 
-It introduces two credential types.
+\subsection{Product framing}
 
-\subsection{Human credential}
+Tessera provides identity and authority for AI agents.
 
-A human credential proves that a real human principal exists and is eligible to delegate authority.
+\subsection{Technical framing}
 
-\subsection{Agent credential}
+Tessera provides capability-based security for agent actions.
 
-An agent credential is issued by that human to an agent, defining:
+\subsection{Operational framing}
 
-\begin{itemize}
-  \item the agent identity,
-  \item the permitted actions,
-  \item optional spending or usage limits,
-  \item optional resource constraints,
-  \item the issuance time,
-  \item the expiry time,
-  \item and the human signature authorising the delegation.
-\end{itemize}
+Tessera gives agents scoped, revocable, runtime-enforced authority with audit trails.
 
-The protocol is designed so that sensitive actions are checked at execution time, not assumed from prior login state or API possession.
+In practical terms, Tessera is a control layer that sits in or near the runtime path where agent actions execute. It checks whether an agent has a valid capability for the requested action, whether that capability remains in force, and whether the action should be allowed or denied.
 
-\section{The First Product: Tessera Guard}
-
-Tessera Guard is the first implementation of the protocol.
-
-It is a middleware layer that intercepts sensitive tool calls and blocks them unless the agent presents a valid Tessera credential.
-
-\subsection{Guarded action classes}
-
-The initial protected classes are:
-
-\begin{itemize}
-  \item \texttt{message.send}
-  \item \texttt{payment.intent}
-  \item \texttt{exec.shell}
-  \item \texttt{content.publish}
-\end{itemize}
-
-These classes are deliberately narrow. They cover high-risk actions with clear user harm and immediate practical demand.
-
-\subsection{Verification flow}
-
-When an agent attempts a guarded action:
+The four core pillars are:
 
 \begin{enumerate}
-  \item The runtime passes the requested action and attached credential to Tessera Guard.
-  \item Guard verifies credential validity.
-  \item Guard verifies issuer and delegation signatures.
-  \item Guard checks expiry.
-  \item Guard checks revocation status.
-  \item Guard checks whether the requested action falls within delegated scope.
-  \item Guard returns allow or deny, with a structured explanation.
+  \item \textbf{Scoped capabilities}
+  \item \textbf{Runtime enforcement}
+  \item \textbf{Instant revocation}
+  \item \textbf{Auditability}
 \end{enumerate}
 
-This turns authorisation into a deterministic runtime boundary.
+\section{What Tessera Is Not}
 
-\subsection{Why Guard matters}
+Tessera is intentionally narrower than several adjacent narratives.
 
-Tessera Guard changes the default posture of agent systems:
-
-\begin{itemize}
-  \item without Guard: agents act unless stopped
-  \item with Guard: agents cannot act unless authorised
-\end{itemize}
-
-That inversion is the core product value.
-
-\section{Design Principles}
-
-Tessera is designed around the following principles.
-
-\subsection{Execution-time authority}
-
-Authority must be evaluated when the action executes, not inferred from long-lived access.
-
-\subsection{Scoped delegation}
-
-An agent can act only within the authority explicitly granted to it.
-
-\subsection{Fast revocation}
-
-A human must be able to invalidate delegated authority immediately.
-
-\subsection{Minimal disclosure}
-
-Verifiers should learn only what they need to know to authorise the action.
-
-\subsection{Runtime portability}
-
-Authorisation should work across agent frameworks, MCP servers, gateways, and platforms.
-
-\subsection{Open protocol, not closed platform lock-in}
-
-The core credential and verification model should be implementable by anyone.
-
-\section{Protocol Model}
-
-Tessera has four layers.
-
-\subsection{Layer 1 --- Human root credential}
-
-A human obtains a root credential from an issuer. This establishes eligibility to delegate authority.
-
-The exact trust anchor may vary by deployment and jurisdiction. In early versions, Tessera may rely on existing verification rails such as regulated identity or financial verification providers. The protocol does not require revealing personal identity to verifiers during runtime authorisation.
-
-\subsection{Layer 2 --- Agent identity}
-
-Each agent has its own public key and stable identifier.
-
-An agent is not merely a session. It is a cryptographic subject capable of receiving delegated authority.
-
-\subsection{Layer 3 --- Delegation}
-
-The human signs a delegation to the agent. The delegation includes:
+Tessera is not:
 
 \begin{itemize}
-  \item agent public key or identifier,
-  \item allowed action classes,
-  \item optional quantitative limits,
-  \item optional contextual constraints,
-  \item issuance time,
-  \item expiry time,
-  \item revocation handle,
-  \item human signature.
+  \item a blockchain system,
+  \item a decentralised ledger project,
+  \item an antivirus product,
+  \item a general semantic moderation engine,
+  \item a full AI safety solution,
+  \item or a universal ideological identity framework.
 \end{itemize}
 
-\subsection{Layer 4 --- Verification}
+Tessera does not currently judge whether the content of an action is morally acceptable, manipulative, fraudulent, or otherwise semantically harmful. Its present job is narrower and more concrete: to enforce authority boundaries around action types, scope, expiry, limits, revocation, and operator visibility.
 
-At runtime, a verifier checks:
+\section{System Model}
+
+The Tessera system model has six core actors and stores.
+
+\subsection{Principal}
+
+The principal is the human or organisation on whose behalf authority is delegated.
+
+\subsection{Agent}
+
+The agent is the runtime subject requesting an action. In practice this may be represented by an agent id, key, session context, or runtime-specific identity.
+
+\subsection{Issuer}
+
+The issuer mints capabilities or credentials that bind delegated authority to an agent within a defined scope.
+
+\subsection{Verifier / guard}
+
+The verifier is the runtime hook or guard layer that evaluates whether a requested action is authorised.
+
+\subsection{Revocation registry}
+
+The revocation registry records whether a capability or delegation instance has been invalidated.
+
+\subsection{Audit log}
+
+The audit log records the decision trace: what was requested, what was presented, what was allowed or denied, when authority changed, and why the result occurred.
+
+In a minimal deployment, these components may all be local. In a larger deployment, the issuer, revocation registry, and audit plane may be managed services.
+
+\section{The Capability Model}
+
+Tessera capabilities define what an agent is allowed to do. A capability may include:
 
 \begin{itemize}
-  \item credential integrity,
-  \item signature chain,
-  \item scope match,
-  \item expiration,
-  \item revocation,
-  \item and policy constraints.
+  \item action classes such as \texttt{exec.shell}, \texttt{message.send}, or \texttt{code.write},
+  \item quantitative limits such as spend caps or recipient limits,
+  \item time bounds such as issued-at and expiry,
+  \item runtime or agent binding,
+  \item and a unique delegation id for revocation and audit.
 \end{itemize}
 
-The result is a simple authorisation decision.
-
-\section{Credential Structure}
-
-\subsection{Human credential}
-
-A Tessera human credential attests that the holder is authorised to delegate agent authority.
-
-The verifier should not need to know the person's name, bank, email, or legal identity to evaluate a delegated action. The runtime only needs to know whether the human root is valid and what assurance tier or policy class it carries.
-
-\subsection{Agent credential}
-
-A Tessera agent credential contains:
-
-\begin{itemize}
-  \item a reference to the parent human root,
-  \item the agent identifier,
-  \item the delegation scope,
-  \item issuance and expiry,
-  \item and the parent signature.
-\end{itemize}
-
-Example shape:
+Illustrative shape:
 
 \begin{lstlisting}
 {
-  "type": "TesseraAgentCredential",
-  "agent": "agent_pk_123",
-  "parent": "human_commitment_abc",
+  "type": "TesseraCapability",
+  "agentId": "main",
+  "delegationId": "a4c9b7d8-...",
   "scope": {
-    "actions": ["message.send", "content.publish"],
-    "max_recipients": 20,
-    "allowed_domains": ["example.com"]
+    "actions": ["message.send"],
+    "maxRecipients": 1
   },
-  "issued_at": 1743465600,
-  "expires_at": 1743552000,
-  "revocation_id": "rev_456",
+  "issuedAt": 1775220000,
+  "expiresAt": 1775223600,
+  "issuer": "tessera-demo",
   "signature": "..."
 }
 \end{lstlisting}
 
-\subsection{Containment rule}
+The point of the capability is not to describe everything an agent is. The point is to constrain what it may do.
 
-No child delegation may exceed the permissions of its parent.
+\section{Enforcement Boundary}
 
-This allows safe sub-delegation in multi-agent systems while preserving a clear authority chain.
+The strongest Tessera integrations sit at real runtime boundaries, not just at dashboards or proxies.
+
+Examples of enforcement boundaries include:
+
+\begin{itemize}
+  \item tool invocation hooks such as \texttt{before\_tool\_call},
+  \item outbound message hooks such as \texttt{message\_sending},
+  \item gateway-side action handlers,
+  \item and server-side tool execution boundaries.
+\end{itemize}
+
+This matters because enforcement is hardest to bypass when it sits in the execution path itself.
+
+\subsection{Current limitation: semantic enforcement is not solved}
+
+Tessera does not yet perform semantic enforcement.
+
+Today, Tessera can enforce:
+
+\begin{itemize}
+  \item whether an action type is permitted,
+  \item whether the requested action is in scope,
+  \item whether a delegation has expired,
+  \item whether a delegation has been revoked,
+  \item and whether quantitative bounds are exceeded.
+\end{itemize}
+
+It cannot yet reliably determine whether an allowed payload is benign or harmful.
+
+For example:
+
+\begin{itemize}
+  \item if an agent has permission to send email or send a message, Tessera can enforce that the send action is permitted within bounds,
+  \item but Tessera cannot yet determine whether the content is manipulative, fraudulent, or otherwise unacceptable.
+\end{itemize}
+
+This is an intentional honesty boundary. Content-aware policy layers, policy-as-code, and richer contextual evaluation may become future extensions, but they are not current truth.
+
+\section{Runtime-Native Architecture}
+
+Tessera starts as a runtime-native control layer for agent actions.
+
+That means the first credible wedge is not a universal global identity fabric. It is integration into real runtimes where sensitive actions are already happening.
+
+\subsection{Why runtime-native matters}
+
+Runtime-native enforcement has three practical advantages:
+
+\begin{enumerate}
+  \item it sits where the action actually executes,
+  \item it can fail closed at the boundary,
+  \item and it can produce decision evidence tied to the runtime context.
+\end{enumerate}
+
+\subsection{OpenClaw as the first wedge}
+
+OpenClaw is a strong example of this wedge because it exposes live runtime hook boundaries. Tessera can attach to those boundaries and make real allow or deny decisions on concrete actions.
+
+Current enforcement is still coarse, but it is real. The present wedge already supports runtime-native control over action classes such as:
+
+\begin{itemize}
+  \item \texttt{exec.shell},
+  \item \texttt{code.write},
+  \item and the runtime hook boundary for \texttt{message.send}.
+\end{itemize}
+
+This is important product discipline. Tessera should not claim broad authority coverage where only advisory or proxy-level control exists.
+
+\subsection{Richer runtime context improves policy quality}
+
+Many runtimes today expose only limited action context, often just a tool name and parameters. That is enough to build a credible first wedge, but richer context will improve:
+
+\begin{itemize}
+  \item audit quality,
+  \item approval flows,
+  \item contextual policy decisions,
+  \item and operator confidence.
+\end{itemize}
 
 \section{Revocation}
 
-Revocation is a first-class requirement.
+Revocation is one of Tessera's strongest practical advantages.
 
-If a human revokes an agent credential, the next guarded action must fail immediately.
+If an operator decides an agent should stop acting, that authority should not linger until the next login rotation, human approval flow, or deployment cycle. It should stop immediately enough to function as a true kill switch.
 
-Tessera therefore treats revocation not as a slow administrative process, but as an online part of authorisation.
+This is why Tessera treats revocation as part of the live authority model rather than a background administrative concern.
 
-A production deployment may use a combination of:
+In practice, Tessera revocation should support:
 
 \begin{itemize}
-  \item status registries,
-  \item signed status lists,
-  \item cached freshness windows,
-  \item and high-availability revocation endpoints.
+  \item explicit invalidation of a delegation instance,
+  \item one-to-one revocation identity,
+  \item fast verifier checks,
+  \item and clear operator visibility that authority has been shut down.
 \end{itemize}
 
-The exact implementation can evolve, but the product requirement is fixed:
+The implementation may vary by deployment, but the product requirement is fixed:
 
 \begin{quote}
-revocation must be fast enough to function as a real kill switch.
+revocation must be fast enough to shut down agent authority in practice, not just in theory.
 \end{quote}
 
-\section{Privacy Model}
+\section{Auditability and Decision Trace}
 
-Tessera aims to minimise disclosure during verification.
+Enforcement alone is not enough. Operators also need to understand what happened.
 
-A verifier should learn:
+Tessera therefore treats auditability as a first-class feature, not a secondary log sink.
+
+A useful decision trace should answer:
 
 \begin{itemize}
-  \item whether the credential is valid,
-  \item whether the action is within scope,
-  \item when the credential expires,
-  \item and what policy tier applies.
+  \item what action was requested,
+  \item what capability or credential was presented,
+  \item what runtime or agent requested it,
+  \item whether the action was allowed or denied,
+  \item why that decision occurred,
+  \item and when authority was granted, revoked, or expired.
 \end{itemize}
 
-A verifier should not need to learn:
+This audit timeline is valuable both operationally and commercially. It makes agent authority legible to developers, operators, enterprise reviewers, and eventually platforms that need to classify agents as verified, restricted, or revoked.
+
+\section{Policy Model and Role Templates}
+
+One of the main adoption bottlenecks is policy definition.
+
+Most developers and operators do not want to author raw capability JSON from scratch. Even when a low-level policy model is expressive, it is not the best interface for everyday adoption.
+
+The practical product direction is:
+
+\begin{quote}
+policies should feel like choosing a role, not authoring a schema.
+\end{quote}
+
+\subsection{Role templates}
+
+Tessera should increasingly expose role templates and preset capability profiles such as:
 
 \begin{itemize}
-  \item the human's civil identity,
-  \item the underlying verification source,
-  \item unrelated activity history,
-  \item or linkable information across unrelated verifications.
+  \item \textbf{Researcher / read-only}
+  \item \textbf{Developer / local dev}
+  \item \textbf{Assistant / communications}
+  \item \textbf{Purchaser / bounded spend}
+  \item \textbf{Custom / advanced}
 \end{itemize}
 
-Privacy is not the entire product, but it matters. Authorisation for agents should not require turning every delegated action into a full identity disclosure event.
+Raw policies should remain available, but role-first onboarding is the adoption path most users will actually tolerate.
 
-\section{Threat Model}
+\subsection{Safe defaults}
 
-Tessera is designed to reduce the following risks:
+Templates are not just convenience. They create safer defaults, clearer expectations, and faster operator understanding. They also make policy review and audit easier because the authority shape is easier to recognise.
 
-\begin{table}[H]
-\centering
-\small
-\begin{tabularx}{\textwidth}{@{}lX@{}}
-\toprule
-\textbf{Risk} & \textbf{Defence} \\
-\midrule
-Unauthorised action & Execution-time scope checks. \\
-Credential replay & Bounded validity, agent-bound keys, and revocation. \\
-Scope escalation & Deterministic scope evaluation and containment rules. \\
-Multi-agent ambiguity & Signed delegation chain from human root to acting agent. \\
-Opaque failure & Structured denial reasons that agents can surface to users. \\
-\bottomrule
-\end{tabularx}
-\caption{Core Tessera threat model.}
-\end{table}
+\section{Deployment Model}
 
-Tessera does not solve every misuse problem. A real human may still authorise harmful behaviour. Tessera's role is narrower: it makes authority explicit, bounded, and auditable.
+The deployment strategy should be managed first, federated later.
 
-\section{Integration Surfaces}
+\subsection{Hosted Tessera Cloud}
 
-Tessera is designed for four initial integration surfaces.
-
-\subsection{Agent runtimes}
-
-Open-source and commercial runtimes can add Guard to their tool invocation path.
-
-\subsection{MCP servers and gateways}
-
-Servers that expose tools to agents can require Tessera credentials before serving sensitive operations.
-
-\subsection{Developer platforms and APIs}
-
-Services can distinguish between unauthenticated automation and human-authorised agent actions.
-
-\subsection{Enterprise internal agents}
-
-Organisations can require bounded delegation for agents acting in internal systems.
-
-\section{Why Now}
-
-Three trends make this the right moment.
-
-\subsection{Agents are crossing from assistance into action}
-
-The risk surface has moved from text generation to real-world execution.
-
-\subsection{Security models are lagging}
-
-Most agent systems still rely on ambient tool access, brittle prompts, or repeated approval loops.
-
-\subsection{Standards are still open}
-
-The market is early enough that the authorisation layer for agents has not yet ossified into a single closed vendor model.
-
-This creates room for an open protocol to define the category.
-
-\section{Go-to-Market}
-
-Tessera starts where the pain is highest and the feedback loop is fastest.
-
-\subsection{Phase 1 --- OpenClaw and open agent ecosystems}
-
-The first battlefield is the open agent developer community.
-
-Why:
+The near-term default should be a hosted Tessera control plane. This is the fastest path to adoption, the cleanest operator experience, and the easiest way to ship:
 
 \begin{itemize}
-  \item these users already understand tools and permissions,
-  \item they can adopt middleware quickly,
-  \item they produce visible design feedback,
-  \item and they are highly valuable for protocol iteration.
-\end{itemize}
-
-The goal of this phase is not maximum revenue. It is product truth.
-
-\subsection{Phase 2 --- Cross-runtime expansion}
-
-Once validated in one ecosystem, Tessera expands to:
-
-\begin{itemize}
-  \item MCP-compatible tools,
-  \item agent gateways,
-  \item coding agents,
-  \item workflow automations,
-  \item and API services receiving agent traffic.
-\end{itemize}
-
-\subsection{Phase 3 --- Enterprise control plane}
-
-The long-term commercial layer includes:
-
-\begin{itemize}
-  \item hosted verification,
-  \item revocation infrastructure,
-  \item policy administration,
-  \item audit trails,
-  \item team and org controls,
-  \item and enterprise integrations.
-\end{itemize}
-
-This creates a natural model:
-
-\begin{itemize}
-  \item open protocol,
-  \item open-source Guard,
-  \item managed control plane.
-\end{itemize}
-
-\section{Business Model}
-
-Tessera's commercial model should remain tightly aligned to authorisation infrastructure.
-
-The clearest monetisable services are:
-
-\begin{itemize}
-  \item hosted verification,
-  \item revocation infrastructure,
+  \item issuer services,
+  \item revocation checks,
+  \item audit timelines,
   \item policy management,
-  \item enterprise auditability,
-  \item and premium support.
+  \item and role-template onboarding.
 \end{itemize}
 
-This keeps the business legible. The protocol can remain open while the operational control plane becomes the commercial offering.
+\subsection{Self-hosted enterprise Tessera}
 
-Early versions should resist adding unnecessary monetary complexity. The main value is not speculative economics. The main value is safe delegated execution.
+Enterprises will eventually need self-hosted deployment for policy control, internal trust boundaries, compliance needs, and data locality.
 
-\section{Non-goals for the Initial Version}
+\subsection{Federated ecosystem deployment}
 
-Tessera is not, in its initial form:
+Longer term, Tessera should support multiple issuers, multiple revocation registries, and interoperable verification across organisational boundaries.
 
-\begin{itemize}
-  \item a universal social network identity,
-  \item a cryptocurrency,
-  \item a consumer payments system,
-  \item a full legal identity replacement,
-  \item or a generalised provenance system for all digital content.
-\end{itemize}
+That federation does not require a blockchain. It can be built with standard issuer trust, registry distribution, and verifier interoperability.
 
-Those may become adjacent extensions over time, but they are not the launch product.
+The important sequencing is adoption first, federation later.
 
-The launch product is narrower:
+\section{Go-to-Market and Product Wedge}
+
+Tessera should not lead with universal claims. It should lead with the strongest real wedge.
+
+That wedge is:
 
 \begin{quote}
-authorisation for sensitive AI agent actions.
+runtime-native authority control for agent actions in real runtimes.
 \end{quote}
+
+The starting value proposition is concrete:
+
+\begin{itemize}
+  \item scoped delegation,
+  \item runtime enforcement,
+  \item fast revocation,
+  \item and audit trails for sensitive agent actions.
+\end{itemize}
+
+This is a more believable adoption story than claiming to already be global infrastructure for the agentic web.
+
+\subsection{The adoption analogy}
+
+In adoption terms, the long-term ambition is closer to HTTPS than to a niche developer add-on: a world where non-use becomes visibly unsafe or unacceptable, and platforms begin to label agents as verified, restricted, or revoked.
+
+In user experience terms, the eventual product could feel closer to a VPN:
+
+\begin{itemize}
+  \item one toggle,
+  \item green means protected,
+  \item and most of the machinery remains invisible.
+\end{itemize}
+
+But the core technical analogy remains capability delegation. Tessera is closer to OAuth for agent actions.
 
 \section{Roadmap}
 
@@ -547,48 +518,59 @@ authorisation for sensitive AI agent actions.
 \toprule
 \textbf{Phase} & \textbf{Scope} \\
 \midrule
-Phase 0 --- Protocol and SDK & Credential schema. Signature and verification logic. Local demo verifier. Basic revocation model. \\
-Phase 1 --- Tessera Guard for OpenClaw & Tool interception middleware. Initial guarded action classes. Structured denial responses. Real developer feedback. \\
-Phase 2 --- Cross-runtime support & MCP and gateway integrations. Policy templates. Hosted verification service. \\
-Phase 3 --- Enterprise layer & Multi-user admin. Team delegation. Audit and compliance features. High-availability revocation and policy infrastructure. \\
-Phase 4 --- Broader standards participation & Standards engagement. Interop work. Multi-issuer ecosystem. \\
+Phase 1 --- Runtime enforcement wedge & Runtime-native enforcement in real agent environments. Scoped capabilities, revocation, and decision evidence for concrete action classes. \\
+Phase 2 --- Operator clarity and policy UX & Audit timeline, clearer authority visibility, decision traces, and role-template onboarding. \\
+Phase 3 --- Hosted control plane and enterprise deployment & Tessera Cloud, self-hosted enterprise deployment, issuer and revocation services, org controls, and policy administration. \\
+Phase 4 --- Richer runtime context and policy layers & Better action context, more expressive policies, policy suggestion, and more contextual approval flows. \\
+Phase 5 --- Optional federation & Multi-issuer interoperability, federated verification, and broader platform adoption if the market warrants it. \\
 \bottomrule
 \end{tabularx}
-\caption{Narrowed v0.6 roadmap.}
+\caption{Sharpened Tessera roadmap.}
 \end{table}
 
-\section{Why the Name Tessera}
+\section{Long-Term Vision}
 
-A Roman \emph{tessera hospitalis} was a token broken into matching parts between strangers. Reuniting the pieces established trust across distance.
+The long-term vision is that Tessera becomes a common authority layer for agent actions.
 
-That image captures the protocol well: human authority on one side, agent action on the other, joined only when the pieces match.
+That does not mean claiming infrastructure status in the present tense. It means pursuing a path where:
+
+\begin{itemize}
+  \item runtimes expose real enforcement hooks,
+  \item operators expect scoped and revocable authority,
+  \item platforms distinguish between verified and unverified agents,
+  \item and non-use of authority controls becomes visibly risky.
+\end{itemize}
+
+If that happens, Tessera or a system like it could become part of the standard security posture of agent systems.
+
+But that outcome depends on adoption, not ideology. The gating factor is whether Tessera solves concrete operator problems better than ambient authority, repeated prompts, or framework-specific controls.
 
 \section{Conclusion}
 
-AI agents need more than prompts, approvals, or platform-specific permissions. They need a standard way to prove who authorised them, what they are allowed to do, and whether that authority still holds.
+The core security problem in agent systems is ambient authority.
 
-Tessera exists to provide that layer.
+Agents should not operate with broad, implicit, unrevocable permissions. Sensitive actions should require explicit capabilities that are scoped, enforced at runtime, revocable, and auditable.
 
-Its purpose is simple:
+That is the central claim of Tessera.
+
+Today, Tessera starts with a narrow but credible wedge: runtime-native enforcement in real agent runtimes. Over time, it can expand into a broader authority layer for agents, but only if it remains grounded in real execution boundaries, honest product limits, and practical operator workflows.
+
+The right quality bar is not grandeur. It is whether a technically literate reader can say:
 
 \begin{quote}
-before an agent can act, it must be authorised.
+this is narrower than I expected, but much more real.
 \end{quote}
-
-That should become a standard property of the internet.
 
 \section{Get Involved}
 
 Tessera is looking for:
 
 \begin{itemize}
-  \item early runtime integrations,
-  \item security and identity reviewers,
-  \item design partners in agent infrastructure,
-  \item and contributors to the open SDK and Guard.
+  \item runtime integration partners,
+  \item security reviewers,
+  \item design partners for operator policy UX,
+  \item and contributors to runtime-native guard integrations.
 \end{itemize}
-
-The protocol is open because agent authorisation should become infrastructure, not a silo.
 
 \vspace{1.5em}
 \begin{center}
@@ -598,7 +580,7 @@ The protocol is open because agent authorisation should become infrastructure, n
 \vfill
 \begin{center}
   \small\color{gray}
-  Tessera Working Draft v0.6 --- April 2026 --- Licensed under CC BY 4.0
+  Tessera Working Draft v0.7 --- April 2026 --- Licensed under CC BY 4.0
 \end{center}
 
 \end{document}

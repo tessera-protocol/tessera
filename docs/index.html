@@ -389,7 +389,7 @@
       <div class="nav-links">
         <a href="#problem" class="nav-link">Problem</a>
         <a href="#guard" class="nav-link">Guard</a>
-        <a href="#protocol" class="nav-link">Protocol</a>
+        <a href="#model" class="nav-link">Model</a>
         <a href="#integrations" class="nav-link">Integrations</a>
         <a href="https://github.com/tessera-protocol/tessera" class="nav-link">GitHub</a>
       </div>
@@ -441,23 +441,23 @@
     <section id="guard">
       <h2>Tessera Guard</h2>
       <p class="section-sub">
-        Tessera Guard blocks sensitive agent actions unless a valid human-delegated credential authorizes them. It verifies scope, expiry, and revocation at execution time.
+        Tessera Guard is a runtime-native capability guard for agent actions. It blocks sensitive actions unless explicit delegated authority covers the request, and it verifies scope, expiry, revocation, and limits at execution time.
       </p>
       <div class="grid">
         <div class="card">
           <span class="eyebrow">ACTION</span>
-          <h3>Guarded classes</h3>
-          <p><code>message.send</code>, <code>payment.intent</code>, <code>exec.shell</code>, and <code>content.publish</code> are the first protected classes.</p>
+          <h3>Target action classes</h3>
+          <p><code>exec.shell</code> is the first live-proven class today. <code>code.write</code> is enforced at the same runtime boundary, and classes such as <code>message.send</code>, <code>payment.intent</code>, and <code>content.publish</code> describe the broader capability model Tessera is designed to express.</p>
         </div>
         <div class="card">
           <span class="eyebrow">CHECK</span>
-          <h3>Execution-time verification</h3>
-          <p>Guard evaluates the request at the moment the action executes, not from stale login state or ambient tool access.</p>
+          <h3>Runtime enforcement</h3>
+          <p>Guard evaluates the request at the moment the action executes, at the runtime boundary rather than only from stale login state or ambient tool access.</p>
         </div>
         <div class="card">
           <span class="eyebrow">DENY</span>
           <h3>Structured feedback</h3>
-          <p>When an action is blocked, the runtime gets a reason and a suggestion that the agent can surface directly to the user.</p>
+          <p>When an action is blocked, the runtime gets a reason and a suggestion that the agent can surface directly to the user, along with an auditable decision trace.</p>
         </div>
       </div>
 
@@ -487,38 +487,38 @@
       </div>
     </section>
 
-    <section id="protocol">
-      <h2>The protocol underneath Guard</h2>
+    <section id="model">
+      <h2>The security model underneath Guard</h2>
       <p class="section-sub">
-        Guard is the product surface. The protocol underneath is intentionally small: human root credential, agent identity, scoped delegation, execution-time verification, and revocation.
+        Guard is the product surface. Underneath it is a narrower security model: identity and authority for AI agents, expressed as scoped capabilities that can be enforced, revoked, and audited at runtime.
       </p>
       <div class="layer-stack">
         <div class="layer">
           <div class="layer-num">01</div>
           <div>
-            <h3>Human root credential</h3>
-            <p>A human principal obtains a root credential from an issuer. Verifiers do not need civil identity at runtime; they need to know the delegator is valid.</p>
+            <h3>Identity and authority</h3>
+            <p>Tessera starts with identity language because humans and organizations delegate authority, but the operational question is narrower: what capability was granted, to which agent, under what limits.</p>
           </div>
         </div>
         <div class="layer">
           <div class="layer-num">02</div>
           <div>
-            <h3>Agent identity</h3>
-            <p>Each agent has its own public key and stable identifier. The agent becomes a cryptographic subject rather than a session with ambient access.</p>
+            <h3>Scoped capabilities</h3>
+            <p>Delegation is expressed as capability scope: action class, limits, expiry, and revocation identity. The goal is to replace ambient authority with explicit delegated authority.</p>
           </div>
         </div>
         <div class="layer">
           <div class="layer-num">03</div>
           <div>
-            <h3>Scoped delegation</h3>
-            <p>The human signs a delegation covering action classes, limits, expiry, and revocation. No child delegation may exceed the permissions of its parent.</p>
+            <h3>Runtime enforcement</h3>
+            <p>The runtime evaluates capability scope at the action boundary. This is harder to bypass than relying only on network edges, stale sessions, or broad tool handles.</p>
           </div>
         </div>
         <div class="layer">
           <div class="layer-num">04</div>
           <div>
-            <h3>Execution-time verification</h3>
-            <p>At runtime, Tessera checks signature integrity, scope match, expiry, revocation, and policy constraints before allowing the action to execute.</p>
+            <h3>Revocation and auditability</h3>
+            <p>At runtime, Tessera checks scope match, expiry, revocation, and policy constraints before allowing the action to execute, and records why a request was allowed or denied.</p>
           </div>
         </div>
       </div>
@@ -527,18 +527,18 @@
     <section id="integrations">
       <h2>OpenClaw first. Cross-runtime next.</h2>
       <p class="section-sub">
-        OpenClaw is the first wedge because it already exposes sensitive tool calls and gives Tessera a fast product-feedback loop. The long-term direction is broader runtime and gateway infrastructure.
+        OpenClaw is the first wedge because it already exposes real runtime hook boundaries and gives Tessera a fast product-feedback loop. The near-term goal is credible runtime enforcement in real agent environments, not broad infrastructure claims before the product earns them.
       </p>
       <div class="split">
         <div class="card">
           <span class="eyebrow">FIRST WEDGE</span>
           <h3>OpenClaw</h3>
-          <p>Tessera Guard already maps OpenClaw tools to guarded action classes and provides human-legible denials inside the agent conversation.</p>
+          <p>Tessera Guard already maps real OpenClaw runtime actions to capability checks and provides human-legible denials inside the agent conversation.</p>
         </div>
         <div class="card">
-          <span class="eyebrow">LONG-TERM</span>
-          <h3>Cross-runtime authorization</h3>
-          <p>The same model extends to MCP servers, gateways, coding agents, workflow runtimes, and API platforms that need execution-time authorization for agent actions.</p>
+          <span class="eyebrow">BOUNDARY</span>
+          <h3>Current limit</h3>
+          <p>Tessera currently enforces action class, scope, expiry, revocation state, and quantitative limits. It does not yet enforce the semantic acceptability of action payloads.</p>
         </div>
       </div>
     </section>

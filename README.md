@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@tessera-protocol/sdk)](https://www.npmjs.com/package/@tessera-protocol/sdk)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
 
-Tessera Guard is a permission layer for agent actions.
+Tessera Guard is a runtime-native capability guard for agent actions.
 
 Today, the live integration is OpenClaw: a real Guard plugin blocks `exec.shell` by default, allows it while a valid credential is active, allows it again on the next identical action, and blocks it again immediately after revocation.
 
@@ -27,7 +27,8 @@ This is implemented live in OpenClaw today.
 ## What Works Today
 
 - OpenClaw is the first live runtime integration
-- Tessera Guard enforces real execution-time boundaries for `exec.shell` and mutation-class tool calls (for example `apply_patch`)
+- Tessera Guard enforces real runtime boundaries for `exec.shell` and mutation-class tool calls (for example `apply_patch`)
+- `message.send` is a real target action class at the hook boundary, but it is not yet live-proven end to end under one clean guarded outbound path
 - `/guard` is the beginning of a local control plane
 - local grant / revoke affects the real credential source used by the plugin
 - recent Guard decisions can be inspected from the dashboard and the plugin event log
@@ -42,10 +43,12 @@ Most agent runtimes still fall back to one of three bad patterns:
 
 Tessera Guard is trying to establish a narrower primitive:
 
-- who authorized this agent?
+- what authority was explicitly delegated?
 - what action class is it allowed to perform?
 - when does that authority expire?
 - can it be revoked before the next action executes?
+
+Tessera currently enforces action class, scope, expiry, revocation state, and quantitative limits. It does not yet enforce the semantic acceptability of action payloads.
 
 ## Observability
 
@@ -60,6 +63,30 @@ The dashboard write path and the issuer service are demo-only local control surf
 
 See the [Quickstart](./QUICKSTART.md) for the exact local flow.
 
+## Policy UX Direction
+
+The security model is capability-based, but the product cannot expect most users to author raw policy schemas by hand.
+
+The practical direction is role-first onboarding:
+
+- policies should feel like choosing a role, not authoring a schema
+- preset capability profiles and safe defaults should cover common cases first
+- raw policy controls should remain available for advanced operators
+
+The first CLI prototype for that flow now lives in `packages/cli-demo`:
+
+- `npm --prefix packages/cli-demo run protect -- --role developer`
+- it renders a Safety Manifest before attaching scoped local authority
+- it keeps revocation explicit with `tessera revoke <credential-id>`
+
+Examples of likely role shapes include:
+
+- researcher / read-only
+- developer / local dev
+- assistant / communications
+- purchaser / bounded spend
+- custom / advanced
+
 ## Current Scope
 
 Today:
@@ -72,25 +99,25 @@ Today:
 Later:
 
 - broader runtime integrations
-- hosted issuer / verification infrastructure
-- richer wallet / protocol surface where it actually helps the authorization flow
+- hosted and self-hosted control planes where they improve operator experience
+- role-template onboarding and safer default capability profiles
 
 OpenClaw is the proving ground and the wedge, not the final universe.
 
 ## Core Model
 
-- human root credential
-- agent identity
-- scoped delegation
-- execution-time verification
+- identity and authority for AI agents
+- scoped capabilities
+- runtime enforcement
 - revocation
+- auditability
 
 ## Packages
 
 - [`openclaw-guard-plugin/`](./openclaw-guard-plugin): local OpenClaw Guard plugin and demo assets
 - [`packages/openclaw/`](./packages/openclaw): Tessera Guard package surface for OpenClaw-related work
-- [`packages/sdk/`](./packages/sdk): core credential, delegation, and verification SDK
-- [`services/issuer/`](./services/issuer): issuer and online revocation / verification service
+- [`packages/sdk/`](./packages/sdk): core capability, delegation, proof, and verification SDK
+- [`services/issuer/`](./services/issuer): local-first issuer and revocation / verification service
 - [`apps/web/`](./apps/web): local dashboard and demo wallet surfaces
 
 ## Links
@@ -98,6 +125,7 @@ OpenClaw is the proving ground and the wedge, not the final universe.
 - [Quickstart](./QUICKSTART.md)
 - [Security Model](./SECURITY_MODEL.md)
 - [Whitepaper v0.6 draft](./docs/whitepaper.pdf)
+- [Message.send proof path note](./docs/message-send-proof-path.md)
 - [Landing page](./docs/index.html)
 - [SDK package](./packages/sdk/README.md)
 - [Protocol spec](./spec/v0.1/tessera-spec.md)
