@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tessera — The Permission Layer for AI Agents</title>
-  <meta name="description" content="Before an AI agent acts, it should be authorized. Tessera Guard verifies human-delegated permissions for email, payments, shell, and publishing at execution time.">
+  <title>Tessera — The Authority Layer for AI Agents</title>
+  <meta name="description" content="Scoped, revocable permissions for real agent actions, enforced at runtime. Tessera Guard is live-proven today for repo-scoped exec.shell and code.write.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,300;9..144,600&display=swap" rel="stylesheet">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M6 0L42 0L42 30A20 20 0 0 1 42 70L42 100L6 100Q0 100 0 94L0 6Q0 0 6 0Z' fill='%23534AB7'/%3E%3Cpath d='M50 0L94 0Q100 0 100 6L100 94Q100 100 94 100L50 100L50 70A20 20 0 0 0 50 30A20 20 0 0 0 50 30Z' fill='%23534AB7'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="../brand/tessera-mark-purple.svg">
   <style>
     :root {
       --bg: #0a0a0f;
@@ -88,27 +88,14 @@
       width: 22px;
       height: 22px;
       display: inline-block;
-      background:
-        linear-gradient(90deg, var(--accent) 0 42%, transparent 42%),
-        linear-gradient(90deg, transparent 50%, var(--accent) 50%);
-      border-radius: 6px;
-      position: relative;
-      overflow: hidden;
+      flex: 0 0 auto;
     }
 
-    .mark::before,
-    .mark::after {
-      content: "";
-      position: absolute;
-      top: 30%;
-      width: 18px;
-      height: 40%;
-      border-radius: 999px;
-      background: var(--bg);
+    .mark svg {
+      width: 100%;
+      height: 100%;
+      display: block;
     }
-
-    .mark::before { left: 11px; transform: translateX(-50%); }
-    .mark::after { left: 11px; transform: translateX(50%); }
 
     .nav-links {
       display: flex;
@@ -383,14 +370,14 @@
   <nav>
     <div class="inner">
       <a href="#" class="logo">
-        <span class="mark" aria-hidden="true"></span>
+        <img class="mark" src="../brand/tessera-mark-reversed.svg" alt="" aria-hidden="true">
         <span>tessera</span>
       </a>
       <div class="nav-links">
-        <a href="#problem" class="nav-link">Problem</a>
-        <a href="#guard" class="nav-link">Guard</a>
-        <a href="#model" class="nav-link">Model</a>
-        <a href="#integrations" class="nav-link">Integrations</a>
+        <a href="#beta" class="nav-link">Beta</a>
+        <a href="#why" class="nav-link">Why</a>
+        <a href="#today" class="nav-link">Today</a>
+        <a href="#vision" class="nav-link">Vision</a>
         <a href="https://github.com/tessera-protocol/tessera" class="nav-link">GitHub</a>
       </div>
     </div>
@@ -398,174 +385,115 @@
 
   <div class="container">
     <section class="hero">
-      <span class="hero-badge">OPEN PROTOCOL · PRE-ALPHA</span>
-      <h1>Before an AI agent acts,<br>it should be <span class="gradient">authorized</span></h1>
+      <span class="hero-badge">BETA PILOT · LIVE-PROVEN WORKFLOWS</span>
+      <h1>Tessera is the <span class="gradient">authority layer</span><br>for AI agents.</h1>
       <p class="hero-sub">
-        Tessera Guard verifies human-delegated permissions for email, payments, shell, and publishing at execution time.
+        Scoped, revocable permissions for real agent actions, enforced at runtime.
+      </p>
+      <p class="hero-sub" style="margin-top: -10px;">
+        Operators can issue, revoke, inspect, and verify agent authority for guarded actions like shell execution and code modification.
       </p>
       <div class="hero-actions">
-        <a href="https://www.npmjs.com/package/@tessera-protocol/openclaw" class="btn btn-primary">Install Guard</a>
-        <a href="https://github.com/tessera-protocol/tessera/blob/main/docs/whitepaper.pdf" class="btn btn-secondary">Read the whitepaper</a>
-        <a href="https://github.com/tessera-protocol/tessera/tree/main/packages/openclaw" class="btn btn-secondary">View the demo</a>
+        <a href="./external-pilot-handoff.md" class="btn btn-primary">Join the Beta Pilot</a>
+        <a href="./beta-support-matrix.md" class="btn btn-secondary">See current beta scope</a>
       </div>
     </section>
 
-    <div class="epigraph">
-      <p>The Roman tessera hospitalis was a token split between two strangers. Reuniting the pieces proved trust across distance.</p>
-    </div>
-
-    <section id="problem">
-      <h2>The missing boundary for agent actions</h2>
+    <section id="beta">
+      <h2>Current Beta</h2>
       <p class="section-sub">
-        Agents can already act across tools and services. What is missing is a portable runtime check for who authorized them, what they can do, and whether that authority is still valid.
-      </p>
-      <div class="grid">
-        <div class="card">
-          <span class="eyebrow">01</span>
-          <h3>Ambient authority</h3>
-          <p>If an agent has a token or tool handle, it can often act with no further authorization check. That works for demos and fails for real systems.</p>
-        </div>
-        <div class="card">
-          <span class="eyebrow">02</span>
-          <h3>Approval fatigue</h3>
-          <p>Asking the human to approve every step avoids some risk, but it also destroys the utility of autonomy. Delegation needs to be bounded, not constant.</p>
-        </div>
-        <div class="card">
-          <span class="eyebrow">03</span>
-          <h3>Fragmented permission models</h3>
-          <p>Every runtime reinvents authorization differently. There is still no standard execution-time permission layer for agent actions.</p>
-        </div>
-      </div>
-    </section>
-
-    <section id="guard">
-      <h2>Tessera Guard</h2>
-      <p class="section-sub">
-        Tessera Guard is a runtime-native capability guard for agent actions. It blocks sensitive actions unless explicit delegated authority covers the request, and it verifies scope, expiry, revocation, and limits at execution time.
-      </p>
-      <div class="grid">
-        <div class="card">
-          <span class="eyebrow">ACTION</span>
-          <h3>Target action classes</h3>
-          <p><code>exec.shell</code> is the first live-proven class today. <code>code.write</code> is enforced at the same runtime boundary, and classes such as <code>message.send</code>, <code>payment.intent</code>, and <code>content.publish</code> describe the broader capability model Tessera is designed to express.</p>
-        </div>
-        <div class="card">
-          <span class="eyebrow">CHECK</span>
-          <h3>Runtime enforcement</h3>
-          <p>Guard evaluates the request at the moment the action executes, at the runtime boundary rather than only from stale login state or ambient tool access.</p>
-        </div>
-        <div class="card">
-          <span class="eyebrow">DENY</span>
-          <h3>Structured feedback</h3>
-          <p>When an action is blocked, the runtime gets a reason and a suggestion that the agent can surface directly to the user, along with an auditable decision trace.</p>
-        </div>
-      </div>
-
-      <div class="code-block">
-        <span class="code-label">// guarded tool invocation</span>
-<pre><span class="kw">import</span> { <span class="fn">createGuard</span> } <span class="kw">from</span> <span class="str">'@tessera-protocol/openclaw'</span>;
-
-<span class="kw">const</span> guard = <span class="fn">createGuard</span>({
-  credential: process.env.<span class="str">TESSERA_AGENT_CREDENTIAL</span>,
-  trustedIssuerKeys: [process.env.<span class="str">TESSERA_ISSUER_PUBLIC_KEY</span>],
-  offlineMode: <span class="kw">false</span>,
-  issuerUrl: <span class="str">'http://localhost:3001'</span>,
-});
-
-<span class="kw">const</span> result = <span class="kw">await</span> guard.<span class="fn">check</span>(<span class="str">'email.send'</span>, {
-  recipientCount: <span class="num">5</span>,
-  recipientDomains: [<span class="str">'example.com'</span>],
-});
-
-<span class="kw">if</span> (!result.allowed) {
-  console.<span class="fn">error</span>(result.reason);
-  console.<span class="fn">error</span>(result.suggestion);
-  <span class="kw">return</span>;
-}
-
-<span class="cm">// Safe to proceed with the sensitive action.</span></pre>
-      </div>
-    </section>
-
-    <section id="model">
-      <h2>The security model underneath Guard</h2>
-      <p class="section-sub">
-        Guard is the product surface. Underneath it is a narrower security model: identity and authority for AI agents, expressed as scoped capabilities that can be enforced, revoked, and audited at runtime.
-      </p>
-      <div class="layer-stack">
-        <div class="layer">
-          <div class="layer-num">01</div>
-          <div>
-            <h3>Identity and authority</h3>
-            <p>Tessera starts with identity language because humans and organizations delegate authority, but the operational question is narrower: what capability was granted, to which agent, under what limits.</p>
-          </div>
-        </div>
-        <div class="layer">
-          <div class="layer-num">02</div>
-          <div>
-            <h3>Scoped capabilities</h3>
-            <p>Delegation is expressed as capability scope: action class, limits, expiry, and revocation identity. The goal is to replace ambient authority with explicit delegated authority.</p>
-          </div>
-        </div>
-        <div class="layer">
-          <div class="layer-num">03</div>
-          <div>
-            <h3>Runtime enforcement</h3>
-            <p>The runtime evaluates capability scope at the action boundary. This is harder to bypass than relying only on network edges, stale sessions, or broad tool handles.</p>
-          </div>
-        </div>
-        <div class="layer">
-          <div class="layer-num">04</div>
-          <div>
-            <h3>Revocation and auditability</h3>
-            <p>At runtime, Tessera checks scope match, expiry, revocation, and policy constraints before allowing the action to execute, and records why a request was allowed or denied.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="integrations">
-      <h2>OpenClaw first. Cross-runtime next.</h2>
-      <p class="section-sub">
-        OpenClaw is the first wedge because it already exposes real runtime hook boundaries and gives Tessera a fast product-feedback loop. The near-term goal is credible runtime enforcement in real agent environments, not broad infrastructure claims before the product earns them.
+        Repo-scoped <code>exec.shell</code> and <code>code.write</code> are live-proven today. <code>message.send</code> is also live-proven on a verified gateway path and is currently operator-assisted.
       </p>
       <div class="split">
         <div class="card">
-          <span class="eyebrow">FIRST WEDGE</span>
-          <h3>OpenClaw</h3>
-          <p>Tessera Guard already maps real OpenClaw runtime actions to capability checks and provides human-legible denials inside the agent conversation.</p>
+          <span class="eyebrow">EXTERNAL PILOT</span>
+          <h3>What is ready now</h3>
+          <p>External pilot operators can use Tessera Guard today for repo-scoped <code>exec.shell</code> and <code>code.write</code>, with live runtime enforcement, revocation, verification, and auditable evidence.</p>
         </div>
         <div class="card">
-          <span class="eyebrow">BOUNDARY</span>
-          <h3>Current limit</h3>
-          <p>Tessera currently enforces action class, scope, expiry, revocation state, and quantitative limits. It does not yet enforce the semantic acceptability of action payloads.</p>
+          <span class="eyebrow">TRUTHFUL SCOPE</span>
+          <h3>What remains narrower</h3>
+          <p><code>message.send</code> is proven on the canonical patched gateway path, but it remains operator-assisted and is not yet part of the external pilot scope.</p>
         </div>
       </div>
     </section>
 
+    <section id="why">
+      <h2>Why it matters</h2>
+      <p class="section-sub">
+        Agents should not run on ambient authority. Tessera makes authority explicit, scoped, revocable, and auditable at the runtime boundary where actions actually happen.
+      </p>
+      <div class="grid">
+        <div class="card">
+          <span class="eyebrow">GRANT</span>
+          <h3>Explicit authority</h3>
+          <p>Operators can grant only the permissions an agent needs instead of letting broad tool access stand in for real authority.</p>
+        </div>
+        <div class="card">
+          <span class="eyebrow">REVOKE</span>
+          <h3>Runtime control</h3>
+          <p>When trust changes, operators can revoke authority and verify that runtime enforcement blocks the next guarded action.</p>
+        </div>
+        <div class="card">
+          <span class="eyebrow">AUDIT</span>
+          <h3>Evidence afterward</h3>
+          <p>Tessera records what was allowed or blocked so operators can inspect the decision trail instead of trusting policy theater.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="today">
+      <h2>Available today</h2>
+      <p class="section-sub">
+        In the current Beta, operators can issue, revoke, inspect, and verify authority for real guarded actions.
+      </p>
+      <div class="grid">
+        <div class="card">
+          <span class="eyebrow">LIVE-PROVEN TODAY</span>
+          <h3><code>exec.shell</code></h3>
+          <p>Repo-scoped shell execution is live-proven with deny, allow, revoke, verification, and evidence on the real operator path.</p>
+        </div>
+        <div class="card">
+          <span class="eyebrow">LIVE-PROVEN TODAY</span>
+          <h3><code>code.write</code></h3>
+          <p>Repo-scoped code modification follows the same runtime-enforced proof loop and operator workflow as shell execution.</p>
+        </div>
+        <div class="card">
+          <span class="eyebrow">VERIFIED PATH</span>
+          <h3><code>message.send</code></h3>
+          <p><code>message.send</code> is live-proven on the canonical patched gateway path and currently operator-assisted rather than part of the external pilot.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="vision">
+      <h2>Vision</h2>
+      <p class="section-sub">
+        Tessera will make agent authority explicit, revocable, and auditable across runtimes. The broader platform will move agents away from ambient power by default and toward bounded authority operators can understand, change, verify, and audit.
+      </p>
+    </section>
+
     <section class="cta-section">
-      <h2>Build with Guard</h2>
+      <h2>Join the Beta Pilot</h2>
       <p class="section-sub" style="margin: 0 auto 28px;">
-        Start with the OpenClaw integration today, then carry the same authorization model into the rest of your agent stack.
+        Start with repo-scoped <code>exec.shell</code> and <code>code.write</code>, then use the pilot docs to install, operate, and verify the live-proven workflows.
       </p>
       <div class="hero-actions">
-        <a href="https://www.npmjs.com/package/@tessera-protocol/openclaw" class="btn btn-primary">Install Guard</a>
-        <a href="https://github.com/tessera-protocol/tessera/blob/main/docs/whitepaper.pdf" class="btn btn-secondary">Read the whitepaper</a>
-        <a href="https://github.com/tessera-protocol/tessera/tree/main/packages/openclaw" class="btn btn-secondary">View the demo</a>
+        <a href="./external-pilot-handoff.md" class="btn btn-primary">Join the Beta Pilot</a>
+        <a href="./operator-runbook.md" class="btn btn-secondary">Read the operator runbook</a>
       </div>
       <div class="cta-links">
-        <a href="https://www.npmjs.com/package/@tessera-protocol/openclaw">OpenClaw package</a>
-        <a href="https://www.npmjs.com/package/@tessera-protocol/sdk">SDK package</a>
-        <a href="https://github.com/tessera-protocol/tessera/blob/main/docs/whitepaper.pdf">Whitepaper</a>
-        <a href="https://github.com/tessera-protocol/tessera/blob/main/spec/v0.1/tessera-spec.md">Protocol spec</a>
-        <a href="https://github.com/tessera-protocol/tessera/discussions">Discussions</a>
+        <a href="./external-pilot-handoff.md">Pilot handoff</a>
+        <a href="./beta-support-matrix.md">Beta support matrix</a>
+        <a href="./verification-guide.md">Verification guide</a>
+        <a href="https://github.com/tessera-protocol/tessera/discussions">Feedback and discussions</a>
       </div>
     </section>
   </div>
 
   <footer>
     <div class="container">
-      <p>Tessera · The permission layer for AI agents · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> · Built by <a href="https://github.com/gullirg">Guglielmo Reggio</a> · <a href="https://x.com/TesseraProtocol">@TesseraProtocol</a></p>
+      <p>Tessera · The authority layer for AI agents · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> · Built by <a href="https://github.com/gullirg">Guglielmo Reggio</a> · <a href="https://x.com/TesseraProtocol">@TesseraProtocol</a></p>
     </div>
   </footer>
 </body>
