@@ -7,7 +7,7 @@
   <meta name="description" content="Scoped, revocable permissions for real agent actions, enforced at runtime. Tessera Guard is live-proven today for repo-scoped exec.shell and code.write.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,300;9..144,600&display=swap" rel="stylesheet">
-  <link rel="icon" type="image/svg+xml" href="../brand/tessera-mark-purple.svg">
+  <link rel="icon" type="image/svg+xml" href="./tessera-mark-purple.svg">
   <style>
     :root {
       --bg: #0a0a0f;
@@ -191,20 +191,6 @@
       border: 1px solid var(--border);
     }
 
-    .epigraph {
-      text-align: center;
-      padding-bottom: 24px;
-    }
-
-    .epigraph p {
-      max-width: 520px;
-      margin: 0 auto;
-      font-family: 'Fraunces', serif;
-      font-style: italic;
-      font-weight: 300;
-      color: var(--text-dim);
-    }
-
     h2 {
       font-size: 30px;
       margin-bottom: 14px;
@@ -247,87 +233,34 @@
       font-size: 15px;
     }
 
-    .layer-stack,
     .split {
       display: grid;
       gap: 16px;
     }
 
-    .layer {
+    .status-strip {
+      padding-top: 24px;
+      padding-bottom: 8px;
+    }
+
+    .status-strip .card {
+      padding: 18px 22px;
+      background: rgba(22, 22, 31, 0.82);
+    }
+
+    .status-grid {
       display: grid;
-      grid-template-columns: 60px 1fr;
-      gap: 16px;
-      align-items: start;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 22px;
+      gap: 14px;
     }
 
-    .layer-num {
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
-      background: var(--accent-dim);
-      color: var(--accent-light);
-      font-family: 'DM Mono', monospace;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
+    .status-grid p {
+      color: var(--text-muted);
+      font-size: 14px;
     }
 
-    .layer h3 { font-size: 20px; margin-bottom: 6px; }
-    .layer p { color: var(--text-muted); }
-
-    .code-block {
-      margin-top: 24px;
-      background: #101018;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      overflow: hidden;
-    }
-
-    .code-label {
-      display: block;
-      padding: 12px 18px;
-      border-bottom: 1px solid var(--border);
-      font-family: 'DM Mono', monospace;
-      font-size: 12px;
-      color: var(--text-dim);
-    }
-
-    pre {
-      overflow-x: auto;
-      padding: 18px;
-      font-family: 'DM Mono', monospace;
-      font-size: 13px;
-      line-height: 1.7;
-      color: #d9d9e4;
-    }
-
-    .kw { color: #9ecbff; }
-    .fn { color: #f5d58a; }
-    .str { color: #97d6a0; }
-    .num { color: #dca6ff; }
-    .cm { color: #7b7b91; }
-
-    .checklist {
-      list-style: none;
-      display: grid;
-      gap: 10px;
-    }
-
-    .checklist li {
-      padding-left: 18px;
-      position: relative;
-    }
-
-    .checklist li::before {
-      content: "•";
-      position: absolute;
-      left: 0;
-      color: var(--accent-light);
+    .status-grid strong {
+      color: #fff;
+      font-weight: 600;
     }
 
     .cta-section {
@@ -361,6 +294,7 @@
     @media (min-width: 760px) {
       .grid { grid-template-columns: repeat(3, 1fr); }
       .split { grid-template-columns: repeat(2, 1fr); }
+      .status-grid { grid-template-columns: repeat(2, 1fr); }
     }
   </style>
 </head>
@@ -370,7 +304,7 @@
   <nav>
     <div class="inner">
       <a href="#" class="logo">
-        <img class="mark" src="../brand/tessera-mark-reversed.svg" alt="" aria-hidden="true">
+        <img class="mark" src="./tessera-mark-reversed.svg" alt="" aria-hidden="true">
         <span>tessera</span>
       </a>
       <div class="nav-links">
@@ -399,21 +333,12 @@
       </div>
     </section>
 
-    <section id="beta">
-      <h2>Current Beta</h2>
-      <p class="section-sub">
-        Repo-scoped <code>exec.shell</code> and <code>code.write</code> are live-proven today. <code>message.send</code> is also live-proven on a verified gateway path and is currently operator-assisted.
-      </p>
-      <div class="split">
-        <div class="card">
-          <span class="eyebrow">EXTERNAL PILOT</span>
-          <h3>What is ready now</h3>
-          <p>External pilot operators can use Tessera Guard today for repo-scoped <code>exec.shell</code> and <code>code.write</code>, with live runtime enforcement, revocation, verification, and auditable evidence.</p>
-        </div>
-        <div class="card">
-          <span class="eyebrow">TRUTHFUL SCOPE</span>
-          <h3>What remains narrower</h3>
-          <p><code>message.send</code> is proven on the canonical patched gateway path, but it remains operator-assisted and is not yet part of the external pilot scope.</p>
+    <section id="beta" class="status-strip">
+      <div class="card">
+        <span class="eyebrow">CURRENT BETA</span>
+        <div class="status-grid">
+          <p><strong>External pilot ready:</strong> repo-scoped <code>exec.shell</code> and <code>code.write</code> are live-proven today.</p>
+          <p><strong>Operator-assisted today:</strong> <code>message.send</code> is live-proven on a verified gateway path and is not part of the current external pilot.</p>
         </div>
       </div>
     </section>
@@ -461,7 +386,7 @@
         <div class="card">
           <span class="eyebrow">VERIFIED PATH</span>
           <h3><code>message.send</code></h3>
-          <p><code>message.send</code> is live-proven on the canonical patched gateway path and currently operator-assisted rather than part of the external pilot.</p>
+          <p><code>message.send</code> is live-proven on the canonical patched gateway path and remains operator-assisted rather than part of the external pilot.</p>
         </div>
       </div>
     </section>
@@ -469,7 +394,7 @@
     <section id="vision">
       <h2>Vision</h2>
       <p class="section-sub">
-        Tessera will make agent authority explicit, revocable, and auditable across runtimes. The broader platform will move agents away from ambient power by default and toward bounded authority operators can understand, change, verify, and audit.
+        Tessera will make agent authority explicit, revocable, and auditable across runtimes. The broader platform will move agents away from ambient power by default and toward bounded authority that operators can understand, change, verify, and audit.
       </p>
     </section>
 
