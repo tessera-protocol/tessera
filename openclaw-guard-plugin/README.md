@@ -109,11 +109,20 @@ The live path now proves:
 
 ## Message path status
 
-The plugin now enforces `message.send` at the real `message_sending` hook boundary, but full live end-to-end delivery is still blocked in this local setup because the repo-scoped OpenClaw profile does not have a working outbound channel account. The direct CLI path currently fails early with:
+The plugin now enforces `message.send` at the real `message_sending` hook boundary, and that remains an important target action class for Tessera Guard.
 
-- `Error: Channel is unavailable: telegram`
+However, `message.send` is not yet live-proven end to end under one clean Tessera-enforced and auditable outbound path in the current runtime wiring.
 
-So `message.send` is validated against the real OpenClaw hook contract, but not yet through a successful live outbound channel send.
+In practice, the remaining blocker is not just channel availability. The current OpenClaw outbound send paths do not yet yield one consistent path that both:
+
+1. exercises the loaded Tessera guard hook in the active runtime
+2. produces a successful, auditable outbound delivery result
+
+So the current claim should stay narrow:
+
+- `message.send` is real at the hook boundary
+- deny/allow behavior is regression-tested at that boundary
+- full live outbound proof still depends on clearer runtime/channel path coverage
 
 ## Hardening regression tests
 
@@ -133,5 +142,5 @@ This covers:
 - local JSON credentials only
 - no issuer service
 - no VC/ZK verification
-- no working local outbound channel account for a fully live `message.send` demo yet
+- no single clean live-proven outbound `message.send` path yet in the current runtime wiring
 - no persistent revocation registry beyond the `revoked` field in the local credential file

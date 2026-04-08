@@ -1,5 +1,3 @@
-#!/usr/bin/env -S npx tsx
-
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,7 +17,7 @@ const YELLOW = '\x1b[33m';
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
 
-async function main() {
+export async function runLifecycleDemo() {
   const tempDir = mkdtempSync(join(tmpdir(), 'tessera-demo-'));
 
   try {
@@ -308,9 +306,3 @@ function detail(message: string) {
 function pause(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error);
-  console.error(`${RED}${message}${RESET}`);
-  process.exitCode = 1;
-});

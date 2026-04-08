@@ -1,7 +1,7 @@
 {
   "name": "@tessera-protocol/sdk",
   "version": "0.1.0-alpha.1",
-  "description": "Core SDK for Tessera Guard: human root credentials, scoped agent delegation, execution-time verification, and revocation",
+  "description": "Core SDK for Tessera Guard: capability-based delegation, runtime verification, and revocation for agent actions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
